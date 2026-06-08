@@ -18,6 +18,9 @@ st.set_page_config(
 # Initialize Session State
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+if "summary" not in st.session_state:
+    st.session_state.summary = None
     
 @st.cache_resource
 def get_rag_engine():
@@ -50,7 +53,9 @@ with st.sidebar:
                 try:
                     num_chunks = rag_engine.load_and_index_pdf(tmp_path)
                     st.session_state.db_ready = True
-                    status.update(label=f"Xử lý thành công! Đã tạo {num_chunks} chunks.", state="complete", expanded=False)
+                    st.write("Đang khởi tạo bản tóm tắt báo cáo tài chính...")
+                    st.session_state.summary = rag_engine.summarize_pdf(tmp_path)
+                    status.update(label=f"Xử lý thành công! Đã tạo {num_chunks} chunks và bản tóm tắt.", state="complete", expanded=False)
                 except Exception as e:
                     status.update(label=f"Lỗi: {str(e)}", state="error", expanded=False)
                 finally:
@@ -68,6 +73,11 @@ st.title("Trợ lý Phân tích AI 🤖")
 if not st.session_state.db_ready:
     st.info("👋 Chào mừng bạn! Vui lòng tải lên một Báo cáo Tài chính (PDF) ở thanh bên trái để bắt đầu.")
 else:
+    # Hiển thị Bản tóm tắt nhanh báo cáo tài chính nếu có
+    if st.session_state.get("summary"):
+        with st.expander("📌 Bản tóm tắt nhanh báo cáo tài chính", expanded=False):
+            st.markdown(st.session_state.summary)
+
     # Display chat messages from history on app rerun
     for message in st.session_state.messages:
         role = "user" if isinstance(message, HumanMessage) else "assistant"
@@ -84,7 +94,14 @@ else:
         with st.chat_message("assistant"):
             with st.spinner("Đang phân tích số liệu..."):
                 try:
-                    answer, sources = rag_engine.ask(prompt, st.session_state.messages)
+                    # Kiểm tra xem người dùng có muốn tóm tắt báo cáo không
+                    is_summary_query = any(kw in prompt.lower() for kw in ["tóm tắt", "tom tat", "summary", "khái quát", "khai quat", "sơ lược", "so luoc"])
+                    
+                    if is_summary_query and st.session_state.get("summary"):
+                        answer = st.session_state.summary
+                        sources = []
+                    else:
+                        answer, sources = rag_engine.ask(prompt, st.session_state.messages)
                     
                     st.markdown(answer)
                     if sources:

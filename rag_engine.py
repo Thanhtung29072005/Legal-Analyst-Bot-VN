@@ -44,15 +44,19 @@ class FinancialRAG:
         )
         splits = text_splitter.split_documents(docs)
 
+        # Xóa collection cũ (nếu có) để tránh cộng dồn dữ liệu của file tài liệu cũ
         try:
-            self.client.get_collection(config.COLLECTION_NAME)
+            self.client.delete_collection(config.COLLECTION_NAME)
         except Exception:
-            from qdrant_client.models import VectorParams, Distance
-            vector_size = len(self.embeddings.embed_query("test"))
-            self.client.create_collection(
-                collection_name=config.COLLECTION_NAME,
-                vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE)
-            )
+            pass
+
+        # Tạo mới collection sạch cho tài liệu mới
+        from qdrant_client.models import VectorParams, Distance
+        vector_size = len(self.embeddings.embed_query("test"))
+        self.client.create_collection(
+            collection_name=config.COLLECTION_NAME,
+            vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE)
+        )
 
         self.vectorstore = QdrantVectorStore(
             client=self.client,
@@ -141,3 +145,45 @@ class FinancialRAG:
         # Deduplicate sources
         sources = list(set(sources))
         return answer, sources
+
+    def summarize_pdf(self, file_path):
+        """Extracts text from PDF and gets a full summary from LLM using stuffing."""
+        loader = PyPDFLoader(file_path)
+        docs = loader.load()
+        
+        # Để tránh vượt giới hạn Rate Limit (12,000 Tokens/phút) của Groq:
+        # Nếu file dài hơn 10 trang, chúng ta chọn lọc lấy 8 trang đầu (chứa tổng quan/số liệu chính)
+        # và 2 trang cuối (chứa kết luận kiểm toán/chữ ký) để tóm tắt.
+        num_pages = len(docs)
+        if num_pages <= 10:
+            selected_docs = docs
+        else:
+            selected_docs = docs[:8] + docs[-2:]
+            
+        # Combine selected page contents
+        full_text = "\n".join([doc.page_content for doc in selected_docs])
+        
+        # Cắt tiếp nếu tổng số ký tự vẫn quá lớn (giới hạn an toàn khoảng 28,000 ký tự ~ 7,000 tokens)
+        max_chars = 28000
+        if len(full_text) > max_chars:
+            full_text = full_text[:max_chars] + "\n\n[Tài liệu đã được lược bớt một số trang giữa để tránh vượt giới hạn API]"
+            
+        prompt = f"""Bạn là một chuyên gia phân tích tài chính cao cấp (Financial Analyst).
+Nhiệm vụ của bạn là đọc toàn bộ văn bản báo cáo tài chính/bản cáo bạch dưới đây và viết một bản tóm tắt phân tích tài chính toàn diện, rõ ràng bằng tiếng Việt.
+
+Yêu cầu tóm tắt:
+1. **Tổng quan doanh nghiệp:** Tên công ty, ngành nghề/lĩnh vực hoạt động chính.
+2. **Kết quả hoạt động kinh doanh:** Các số liệu tài chính cốt lõi (Doanh thu, Lợi nhuận trước/sau thuế, so sánh tăng trưởng nếu có).
+3. **Cấu trúc tài sản & Nguồn vốn:** Điểm đáng chú ý về tài sản ngắn/dài hạn, nợ phải trả, vốn chủ sở hữu.
+4. **Các điểm nhấn nổi bật & Rủi ro:** Các dự án lớn sắp triển khai, rủi ro tài chính hoặc thị trường nổi bật được đề cập.
+5. **Ý kiến kiểm toán (nếu có):** Ý kiến của kiểm toán viên đối với báo cáo.
+
+Văn bản tài liệu:
+---
+{full_text}
+---
+
+BẢN TÓM TẮT BÁO CÁO TÀI CHÍNH CHI TIẾT:"""
+
+        response = self.llm.invoke(prompt)
+        return response.content
