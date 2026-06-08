@@ -21,3 +21,10 @@ LLM_MAX_TOKENS = 1024
 
 # Retrieval Settings
 RETRIEVER_K = 5
+
+# SQL Server configurations
+SQL_SERVER = os.getenv("SQL_SERVER", "localhost")
+SQL_DATABASE = os.getenv("SQL_DATABASE", "Financial_Analyst_DB")
+SQL_TRUSTED_CONNECTION = os.getenv("SQL_TRUSTED_CONNECTION", "yes") # "yes" cho Windows Auth, "no" cho SQL Server Auth
+SQL_USERNAME = os.getenv("SQL_USERNAME", "")
+SQL_PASSWORD = os.getenv("SQL_PASSWORD", "")

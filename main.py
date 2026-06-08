@@ -15,12 +15,31 @@ st.set_page_config(
     layout="wide"
 )
 
+# Initialize Database with fallback
+use_db = False
+db_error_msg = None
+db = None
+
+try:
+    from database import SQLDatabase
+    db = SQLDatabase()
+    # Test connection
+    conn = db.get_connection()
+    conn.close()
+    use_db = True
+except Exception as e:
+    use_db = False
+    db_error_msg = str(e)
+
 # Initialize Session State
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 if "summary" not in st.session_state:
     st.session_state.summary = None
+
+if "session_id" not in st.session_state:
+    st.session_state.session_id = None
     
 @st.cache_resource
 def get_rag_engine():
@@ -38,6 +57,60 @@ with st.sidebar:
     st.title("Phân tích Báo cáo Tài chính 📈")
     st.write("Tải lên bản cáo bạch hoặc báo cáo thường niên (PDF) để chuyên gia AI phân tích.")
     
+    # Quản lý phiên hội thoại từ SQL Server
+    if use_db:
+        st.success("🔌 Đã kết nối SQL Server")
+        sessions = db.get_all_sessions()
+        options = ["Cuộc trò chuyện mới ➕"] + [f"ID {s['id']}: {s['pdf_name']}" for s in sessions]
+        
+        default_index = 0
+        if st.session_state.session_id is not None:
+            for i, s in enumerate(sessions):
+                if s["id"] == st.session_state.session_id:
+                    default_index = i + 1
+                    break
+                    
+        selected_option = st.selectbox(
+            "Chọn phiên hội thoại",
+            options=options,
+            index=default_index,
+            key="session_select"
+        )
+        
+        current_selected_id = None
+        if selected_option != "Cuộc trò chuyện mới ➕":
+            current_selected_id = int(selected_option.split(":")[0].replace("ID ", ""))
+            
+        if current_selected_id != st.session_state.session_id:
+            st.session_state.session_id = current_selected_id
+            if current_selected_id is None:
+                st.session_state.messages = []
+                st.session_state.summary = None
+                st.session_state.db_ready = False
+            else:
+                st.session_state.messages = db.get_chat_history(current_selected_id)
+                summary_info = db.get_session_summary(current_selected_id)
+                if summary_info:
+                    st.session_state.summary = summary_info["pdf_summary"]
+                    st.session_state.db_ready = summary_info["pdf_summary"] is not None
+                else:
+                    st.session_state.summary = None
+                    st.session_state.db_ready = False
+            st.rerun()
+            
+        if st.session_state.session_id is not None:
+            if st.button("🗑️ Xóa cuộc hội thoại này"):
+                db.delete_session(st.session_state.session_id)
+                st.session_state.session_id = None
+                st.session_state.messages = []
+                st.session_state.summary = None
+                st.session_state.db_ready = False
+                st.rerun()
+    else:
+        st.warning("⚠️ Lịch sử chat (SQL Server) chưa kết nối")
+        st.caption(f"Lỗi: {db_error_msg}")
+        
+    st.write("---")
     uploaded_file = st.file_uploader("Upload PDF file", type=["pdf"])
     
     if st.button("Xử lý Tài liệu"):
@@ -51,11 +124,22 @@ with st.sidebar:
                 
                 st.write("Đang trích xuất và nhúng Vector (Vectorizing)...")
                 try:
-                    num_chunks = rag_engine.load_and_index_pdf(tmp_path)
+                    # Tạo session_id trước nếu chưa có để tag vector vào Qdrant
+                    if use_db and st.session_state.session_id is None:
+                        st.session_state.session_id = db.create_session(uploaded_file.name, "")
+                        
+                    num_chunks = rag_engine.load_and_index_pdf(tmp_path, st.session_state.session_id)
                     st.session_state.db_ready = True
                     st.write("Đang khởi tạo bản tóm tắt báo cáo tài chính...")
-                    st.session_state.summary = rag_engine.summarize_pdf(tmp_path)
+                    summary_text = rag_engine.summarize_pdf(tmp_path)
+                    st.session_state.summary = summary_text
+                    
+                    # Cập nhật thông tin tóm tắt vào SQL Server
+                    if use_db:
+                        db.update_session_pdf(st.session_state.session_id, uploaded_file.name, summary_text)
+                            
                     status.update(label=f"Xử lý thành công! Đã tạo {num_chunks} chunks và bản tóm tắt.", state="complete", expanded=False)
+                    st.rerun()
                 except Exception as e:
                     status.update(label=f"Lỗi: {str(e)}", state="error", expanded=False)
                 finally:
@@ -64,7 +148,10 @@ with st.sidebar:
             st.warning("Vui lòng tải lên một file PDF trước khi xử lý.")
 
     if st.button("Làm mới cuộc trò chuyện"):
+        st.session_state.session_id = None
         st.session_state.messages = []
+        st.session_state.summary = None
+        st.session_state.db_ready = False
         st.rerun()
 
 # Main Chat Area
@@ -90,6 +177,12 @@ else:
         with st.chat_message("user"):
             st.markdown(prompt)
         
+        # Lưu tin nhắn người dùng vào DB nếu dùng SQL Server
+        if use_db:
+            if st.session_state.session_id is None:
+                st.session_state.session_id = db.create_session()
+            db.save_message(st.session_state.session_id, "user", prompt)
+            
         # Display assistant response in chat message container
         with st.chat_message("assistant"):
             with st.spinner("Đang phân tích số liệu..."):
@@ -101,7 +194,7 @@ else:
                         answer = st.session_state.summary
                         sources = []
                     else:
-                        answer, sources = rag_engine.ask(prompt, st.session_state.messages)
+                        answer, sources = rag_engine.ask(prompt, st.session_state.messages, st.session_state.session_id)
                     
                     st.markdown(answer)
                     if sources:
@@ -110,5 +203,9 @@ else:
                     # Add to history
                     st.session_state.messages.append(HumanMessage(content=prompt))
                     st.session_state.messages.append(AIMessage(content=answer))
+                    
+                    # Lưu phản hồi của bot vào DB nếu dùng SQL Server
+                    if use_db:
+                        db.save_message(st.session_state.session_id, "assistant", answer)
                 except Exception as e:
                     st.error(f"Đã xảy ra lỗi khi truy vấn: {str(e)}")

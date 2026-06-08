@@ -32,7 +32,7 @@ class FinancialRAG:
         # Will hold the Qdrant vector store
         self.vectorstore = None
 
-    def load_and_index_pdf(self, file_path):
+    def load_and_index_pdf(self, file_path, session_id=None):
         """Loads a PDF, splits it, and stores it in Qdrant Local."""
         loader = PyPDFLoader(file_path)
         docs = loader.load()
@@ -44,19 +44,53 @@ class FinancialRAG:
         )
         splits = text_splitter.split_documents(docs)
 
-        # Xóa collection cũ (nếu có) để tránh cộng dồn dữ liệu của file tài liệu cũ
-        try:
-            self.client.delete_collection(config.COLLECTION_NAME)
-        except Exception:
-            pass
+        # Gắn nhãn session_id vào metadata của mỗi chunk để lọc sau này
+        if session_id is not None:
+            for doc in splits:
+                doc.metadata["session_id"] = session_id
 
-        # Tạo mới collection sạch cho tài liệu mới
-        from qdrant_client.models import VectorParams, Distance
-        vector_size = len(self.embeddings.embed_query("test"))
-        self.client.create_collection(
-            collection_name=config.COLLECTION_NAME,
-            vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE)
-        )
+        # Kiểm tra và khởi tạo collection nếu chưa có
+        try:
+            self.client.get_collection(config.COLLECTION_NAME)
+        except Exception:
+            from qdrant_client.models import VectorParams, Distance
+            vector_size = len(self.embeddings.embed_query("test"))
+            self.client.create_collection(
+                collection_name=config.COLLECTION_NAME,
+                vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE)
+            )
+
+        # Nếu có dùng SQL Server, chỉ xóa các vector cũ của đúng session này trước khi nạp mới
+        if session_id is not None:
+            try:
+                
+                from qdrant_client.models import Filter, FieldCondition, MatchValue
+                self.client.delete(
+                    collection_name=config.COLLECTION_NAME,
+                    points_selector=Filter(
+                        must=[
+                            FieldCondition(
+                                key="metadata.session_id",
+                                match=MatchValue(value=session_id)
+                            )
+                        ]
+                    )
+                )
+            except Exception:
+                pass
+        else:
+            # Fallback (chế độ in-memory, không DB): xóa toàn bộ collection
+            try:
+                self.client.delete_collection(config.COLLECTION_NAME)
+            except Exception:
+                pass
+                
+            from qdrant_client.models import VectorParams, Distance
+            vector_size = len(self.embeddings.embed_query("test"))
+            self.client.create_collection(
+                collection_name=config.COLLECTION_NAME,
+                vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE)
+            )
 
         self.vectorstore = QdrantVectorStore(
             client=self.client,
@@ -82,12 +116,26 @@ class FinancialRAG:
                 pass
         return False
 
-    def get_conversation_chain(self):
+    def get_conversation_chain(self, session_id=None):
         """Builds a history-aware RAG chain."""
         if not self.vectorstore:
             raise ValueError("Vectorstore not initialized. Please load a PDF first.")
 
-        retriever = self.vectorstore.as_retriever(search_kwargs={"k": config.RETRIEVER_K})
+        search_kwargs = {"k": config.RETRIEVER_K}
+        
+        # Nếu có session_id, thực hiện lọc metadata của Qdrant chỉ lấy các vector thuộc session hiện tại
+        if session_id is not None:
+            from qdrant_client.models import Filter, FieldCondition, MatchValue
+            search_kwargs["filter"] = Filter(
+                must=[
+                    FieldCondition(
+                        key="metadata.session_id",
+                        match=MatchValue(value=session_id)
+                    )
+                ]
+            )
+
+        retriever = self.vectorstore.as_retriever(search_kwargs=search_kwargs)
 
         # 1. Contextualize Question Prompt (deals with history)
         contextualize_q_system_prompt = """Bạn là trợ lý AI. Dựa vào lịch sử hội thoại và câu hỏi mới nhất của người dùng,
@@ -131,9 +179,9 @@ class FinancialRAG:
         
         return rag_chain
 
-    def ask(self, question, chat_history):
+    def ask(self, question, chat_history, session_id=None):
         """Asks a question with history and returns the answer and sources."""
-        chain = self.get_conversation_chain()
+        chain = self.get_conversation_chain(session_id)
         # chat_history format should be a list of BaseMessage (HumanMessage, AIMessage)
         response = chain.invoke({"input": question, "chat_history": chat_history})
         
