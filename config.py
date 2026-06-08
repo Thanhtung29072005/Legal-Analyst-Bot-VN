@@ -5,9 +5,15 @@ QDRANT_PATH = os.path.join(os.path.dirname(__file__), "qdrant_db")
 COLLECTION_NAME = "financial_reports"
 
 # Embedding settings
-# Option 1: keepitreal/vietnamese-sbert (Good for Vietnamese)
-# Option 2: sentence-transformers/paraphrase-multilingual-mpnet-base-v2 (Multilingual)
+# Provider: "huggingface" hoặc "cohere"
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "cohere")
+
+# HuggingFace model (dùng khi EMBEDDING_PROVIDER = "huggingface")
 EMBEDDING_MODEL_NAME = "keepitreal/vietnamese-sbert"
+
+# Cohere embedding (dùng khi EMBEDDING_PROVIDER = "cohere")
+COHERE_API_KEY = os.getenv("COHERE_API_KEY", "")
+COHERE_EMBEDDING_MODEL = "embed-multilingual-v3.0"  # 1024 chiều, hỗ trợ 100+ ngôn ngữ
 
 # Text Splitting settings
 CHUNK_SIZE = 1500

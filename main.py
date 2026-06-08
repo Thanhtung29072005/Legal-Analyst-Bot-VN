@@ -54,77 +54,43 @@ if "db_ready" not in st.session_state:
 
 # Sidebar
 with st.sidebar:
-    st.title("Phân tích Báo cáo Tài chính 📈")
-    st.write("Tải lên bản cáo bạch hoặc báo cáo thường niên (PDF) để chuyên gia AI phân tích.")
-    
-    # Quản lý phiên hội thoại từ SQL Server
-    if use_db:
-        st.success("🔌 Đã kết nối SQL Server")
-        sessions = db.get_all_sessions()
-        options = ["Cuộc trò chuyện mới ➕"] + [f"ID {s['id']}: {s['pdf_name']}" for s in sessions]
-        
-        default_index = 0
-        if st.session_state.session_id is not None:
-            for i, s in enumerate(sessions):
-                if s["id"] == st.session_state.session_id:
-                    default_index = i + 1
-                    break
-                    
-        selected_option = st.selectbox(
-            "Chọn phiên hội thoại",
-            options=options,
-            index=default_index,
-            key="session_select"
-        )
-        
-        current_selected_id = None
-        if selected_option != "Cuộc trò chuyện mới ➕":
-            current_selected_id = int(selected_option.split(":")[0].replace("ID ", ""))
-            
-        if current_selected_id != st.session_state.session_id:
-            st.session_state.session_id = current_selected_id
-            if current_selected_id is None:
-                st.session_state.messages = []
-                st.session_state.summary = None
-                st.session_state.db_ready = False
-            else:
-                st.session_state.messages = db.get_chat_history(current_selected_id)
-                summary_info = db.get_session_summary(current_selected_id)
-                if summary_info:
-                    st.session_state.summary = summary_info["pdf_summary"]
-                    st.session_state.db_ready = summary_info["pdf_summary"] is not None
-                else:
-                    st.session_state.summary = None
-                    st.session_state.db_ready = False
-            st.rerun()
-            
-        if st.session_state.session_id is not None:
-            if st.button("🗑️ Xóa cuộc hội thoại này"):
-                db.delete_session(st.session_state.session_id)
-                st.session_state.session_id = None
-                st.session_state.messages = []
-                st.session_state.summary = None
-                st.session_state.db_ready = False
-                st.rerun()
-    else:
-        st.warning("⚠️ Lịch sử chat (SQL Server) chưa kết nối")
-        st.caption(f"Lỗi: {db_error_msg}")
-        
+    st.title("Menu")
+
     st.write("---")
-    uploaded_file = st.file_uploader("Upload PDF file", type=["pdf"])
+
+    # Nút đoạn chat mới
+    if st.button("Đoạn Chat Mới", use_container_width=True, key="btn_new_chat"):
+        st.session_state.session_id = None
+        st.session_state.messages = []
+        st.session_state.summary = None
+        st.session_state.db_ready = False
+        st.rerun()
+
+    # Nút xoá lịch sử (chỉ hiện khi đang trong 1 phiên)
+    if st.session_state.session_id is not None and use_db:
+        if st.button(" Xoá Cuộc Hội Thoại Này", use_container_width=True, key="btn_delete_chat",
+                     type="primary"):
+            db.delete_session(st.session_state.session_id)
+            st.session_state.session_id = None
+            st.session_state.messages = []
+            st.session_state.summary = None
+            st.session_state.db_ready = False
+            st.rerun()
+
+    st.write("---")
     
-    if st.button("Xử lý Tài liệu"):
+    uploaded_file = st.file_uploader("📄 Upload PDF", type=["pdf"])
+    
+    if st.button("⚙️  Xử lý Tài liệu", use_container_width=True):
         if uploaded_file is not None:
             with st.status("Đang xử lý tài liệu...", expanded=True) as status:
                 st.write("Đang đọc file PDF...")
-                # Save uploaded file to temp
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
                     tmp_file.write(uploaded_file.getvalue())
                     tmp_path = tmp_file.name
                 
                 st.write("Đang trích xuất và nhúng Vector (Vectorizing)...")
                 try:
-                    # Tạo session_id trước nếu chưa có để tag vector vào Qdrant
                     if use_db and st.session_state.session_id is None:
                         st.session_state.session_id = db.create_session(uploaded_file.name, "")
                         
@@ -134,11 +100,10 @@ with st.sidebar:
                     summary_text = rag_engine.summarize_pdf(tmp_path)
                     st.session_state.summary = summary_text
                     
-                    # Cập nhật thông tin tóm tắt vào SQL Server
                     if use_db:
                         db.update_session_pdf(st.session_state.session_id, uploaded_file.name, summary_text)
                             
-                    status.update(label=f"Xử lý thành công! Đã tạo {num_chunks} chunks và bản tóm tắt.", state="complete", expanded=False)
+                    status.update(label=f"Xử lý thành công! Đã tạo {num_chunks} chunks.", state="complete", expanded=False)
                     st.rerun()
                 except Exception as e:
                     status.update(label=f"Lỗi: {str(e)}", state="error", expanded=False)
@@ -147,17 +112,41 @@ with st.sidebar:
         else:
             st.warning("Vui lòng tải lên một file PDF trước khi xử lý.")
 
-    if st.button("Làm mới cuộc trò chuyện"):
-        st.session_state.session_id = None
-        st.session_state.messages = []
-        st.session_state.summary = None
-        st.session_state.db_ready = False
-        st.rerun()
+    st.write("---")
+
+    # Danh sách các cuộc trò chuyện
+    if use_db:
+        sessions = db.get_all_sessions()
+        if sessions:
+            for s in sessions:
+                label = s["title"]
+                is_active = (st.session_state.session_id == s["id"])
+                btn_label = f"{'▶ ' if is_active else ''}{label}"
+                if st.button(btn_label, use_container_width=True, key=f"sess_{s['id']}"):
+                    if st.session_state.session_id != s["id"]:
+                        st.session_state.session_id = s["id"]
+                        st.session_state.messages = db.get_chat_history(s["id"])
+                        summary_info = db.get_session_summary(s["id"])
+                        if summary_info:
+                            st.session_state.summary = summary_info["pdf_summary"]
+                            st.session_state.db_ready = summary_info["pdf_summary"] is not None
+                        else:
+                            st.session_state.summary = None
+                            st.session_state.db_ready = False
+                        st.rerun()
+        else:
+            st.caption("Chưa có cuộc hội thoại nào.")
+    else:
+        st.warning("⚠️ SQL Server chưa kết nối")
+        st.caption(f"Lỗi: {db_error_msg}")
 
 # Main Chat Area
 st.title("Trợ lý Phân tích AI 🤖")
 
-if not st.session_state.db_ready:
+# Kiểm tra RAG engine có dữ liệu không (dù session mới hay cũ)
+has_vectorstore = rag_engine.vectorstore is not None
+
+if not has_vectorstore:
     st.info("👋 Chào mừng bạn! Vui lòng tải lên một Báo cáo Tài chính (PDF) ở thanh bên trái để bắt đầu.")
 else:
     # Hiển thị Bản tóm tắt nhanh báo cáo tài chính nếu có
