@@ -2,7 +2,7 @@ import os
 
 # Qdrant configurations
 QDRANT_PATH = os.path.join(os.path.dirname(__file__), "qdrant_db")
-COLLECTION_NAME = "financial_reports"
+COLLECTION_NAME = "vietnamese_laws"
 
 # Embedding settings
 # Provider: "huggingface" hoặc "cohere"
@@ -16,8 +16,9 @@ COHERE_API_KEY = os.getenv("COHERE_API_KEY", "")
 COHERE_EMBEDDING_MODEL = "embed-multilingual-v3.0"  # 1024 chiều, hỗ trợ 100+ ngôn ngữ
 
 # Text Splitting settings
-CHUNK_SIZE = 1500
-CHUNK_OVERLAP = 200
+# Tăng kích thước chunk để đọc các điều luật đầy đủ hơn
+CHUNK_SIZE = 2000
+CHUNK_OVERLAP = 300
 
 # LLM Settings
 # We use Groq's fast models. llama-3.3-70b-versatile or mixtral-8x7b-32768
@@ -26,11 +27,12 @@ LLM_TEMPERATURE = 0.1 # Keep it low for precise factual retrieval
 LLM_MAX_TOKENS = 1024
 
 # Retrieval Settings
-RETRIEVER_K = 5
+# Tăng số lượng chunk trả về để có nhiều ngữ cảnh luật hơn
+RETRIEVER_K = 6
 
 # SQL Server configurations
 SQL_SERVER = os.getenv("SQL_SERVER", "localhost")
-SQL_DATABASE = os.getenv("SQL_DATABASE", "Financial_Analyst_DB")
+SQL_DATABASE = os.getenv("SQL_DATABASE", "Legal_Chatbot_DB")
 SQL_TRUSTED_CONNECTION = os.getenv("SQL_TRUSTED_CONNECTION", "yes") # "yes" cho Windows Auth, "no" cho SQL Server Auth
 SQL_USERNAME = os.getenv("SQL_USERNAME", "")
 SQL_PASSWORD = os.getenv("SQL_PASSWORD", "")

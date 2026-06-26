@@ -10,8 +10,8 @@ load_dotenv()
 
 # Setup Streamlit page config
 st.set_page_config(
-    page_title="Financial Analyst Bot",
-    page_icon="📈",
+    page_title="Trợ lý Luật pháp Việt Nam AI",
+    page_icon="⚖️",
     layout="wide"
 )
 
@@ -79,38 +79,38 @@ with st.sidebar:
 
     st.write("---")
     
-    uploaded_file = st.file_uploader("📄 Upload PDF", type=["pdf"])
+    uploaded_file = st.file_uploader("📄 Nạp thêm Văn bản Luật (PDF)", type=["pdf"])
     
-    if st.button("⚙️  Xử lý Tài liệu", use_container_width=True):
+    if st.button("⚙️  Nạp vào Kho Luật Chung", use_container_width=True):
         if uploaded_file is not None:
-            with st.status("Đang xử lý tài liệu...", expanded=True) as status:
-                st.write("Đang đọc file PDF...")
+            with st.status("Đang phân tích và nạp tài liệu luật...", expanded=True) as status:
+                st.write("Đang đọc văn bản luật PDF...")
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
                     tmp_file.write(uploaded_file.getvalue())
                     tmp_path = tmp_file.name
                 
-                st.write("Đang trích xuất và nhúng Vector (Vectorizing)...")
+                st.write("Đang phân tích điều luật và tạo vector index...")
                 try:
                     if use_db and st.session_state.session_id is None:
                         st.session_state.session_id = db.create_session(uploaded_file.name, "")
                         
                     num_chunks = rag_engine.load_and_index_pdf(tmp_path, st.session_state.session_id)
                     st.session_state.db_ready = True
-                    st.write("Đang khởi tạo bản tóm tắt báo cáo tài chính...")
+                    st.write("Đang khởi tạo bản tóm tắt văn bản luật...")
                     summary_text = rag_engine.summarize_pdf(tmp_path)
                     st.session_state.summary = summary_text
                     
                     if use_db:
                         db.update_session_pdf(st.session_state.session_id, uploaded_file.name, summary_text)
                             
-                    status.update(label=f"Xử lý thành công! Đã tạo {num_chunks} chunks.", state="complete", expanded=False)
+                    status.update(label=f"Nạp luật thành công! Đã lập chỉ mục {num_chunks} điều khoản.", state="complete", expanded=False)
                     st.rerun()
                 except Exception as e:
                     status.update(label=f"Lỗi: {str(e)}", state="error", expanded=False)
                 finally:
                     os.remove(tmp_path)
         else:
-            st.warning("Vui lòng tải lên một file PDF trước khi xử lý.")
+            st.warning("Vui lòng tải lên một file PDF trước khi nạp.")
 
     st.write("---")
 
@@ -141,17 +141,17 @@ with st.sidebar:
         st.caption(f"Lỗi: {db_error_msg}")
 
 # Main Chat Area
-st.title("Trợ lý Phân tích AI 🤖")
+st.title("Trợ lý Tư vấn Luật pháp Việt Nam ⚖️")
 
 # Kiểm tra RAG engine có dữ liệu không (dù session mới hay cũ)
 has_vectorstore = rag_engine.vectorstore is not None
 
 if not has_vectorstore:
-    st.info("👋 Chào mừng bạn! Vui lòng tải lên một Báo cáo Tài chính (PDF) ở thanh bên trái để bắt đầu.")
+    st.info("👋 Chào mừng bạn! Hệ thống sẽ tra cứu thông tin dựa trên kho văn bản luật hiện có. Nếu muốn bổ sung văn bản luật mới, vui lòng tải file PDF lên ở thanh bên trái và chọn 'Nạp vào Kho Luật Chung'.")
 else:
     # Hiển thị Bản tóm tắt nhanh báo cáo tài chính nếu có
     if st.session_state.get("summary"):
-        with st.expander("📌 Bản tóm tắt nhanh báo cáo tài chính", expanded=False):
+        with st.expander("📌 Bản tóm tắt nhanh văn bản pháp luật vừa nạp", expanded=False):
             st.markdown(st.session_state.summary)
 
     # Display chat messages from history on app rerun
@@ -161,7 +161,7 @@ else:
             st.markdown(message.content)
 
     # React to user input
-    if prompt := st.chat_input("Nhập câu hỏi về báo cáo tài chính (Ví dụ: Doanh thu năm nay là bao nhiêu?)"):
+    if prompt := st.chat_input("Nhập câu hỏi pháp luật (Ví dụ: Điều kiện được cấp sổ đỏ là gì?)"):
         # Display user message in chat message container
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -174,7 +174,7 @@ else:
             
         # Display assistant response in chat message container
         with st.chat_message("assistant"):
-            with st.spinner("Đang phân tích số liệu..."):
+            with st.spinner("Đang tra cứu cơ sở dữ liệu luật và lập luận câu trả lời..."):
                 try:
                     # Kiểm tra xem người dùng có muốn tóm tắt báo cáo không
                     is_summary_query = any(kw in prompt.lower() for kw in ["tóm tắt", "tom tat", "summary", "khái quát", "khai quat", "sơ lược", "so luoc"])

@@ -52,9 +52,12 @@ class FinancialRAG:
         )
         splits = text_splitter.split_documents(docs)
 
-        # Gắn nhãn session_id vào metadata của mỗi chunk để lọc sau này
-        if session_id is not None:
-            for doc in splits:
+        # Gắn nguồn (file_name) và session_id vào metadata
+        import os
+        file_name = os.path.basename(file_path)
+        for doc in splits:
+            doc.metadata["source"] = file_name
+            if session_id is not None:
                 doc.metadata["session_id"] = session_id
 
         # Kiểm tra và khởi tạo collection nếu chưa có
@@ -68,37 +71,22 @@ class FinancialRAG:
                 vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE)
             )
 
-        # Nếu có dùng SQL Server, chỉ xóa các vector cũ của đúng session này trước khi nạp mới
-        if session_id is not None:
-            try:
-                
-                from qdrant_client.models import Filter, FieldCondition, MatchValue
-                self.client.delete(
-                    collection_name=config.COLLECTION_NAME,
-                    points_selector=Filter(
-                        must=[
-                            FieldCondition(
-                                key="metadata.session_id",
-                                match=MatchValue(value=session_id)
-                            )
-                        ]
-                    )
-                )
-            except Exception:
-                pass
-        else:
-            # Fallback (chế độ in-memory, không DB): xóa toàn bộ collection
-            try:
-                self.client.delete_collection(config.COLLECTION_NAME)
-            except Exception:
-                pass
-                
-            from qdrant_client.models import VectorParams, Distance
-            vector_size = len(self.embeddings.embed_query("test"))
-            self.client.create_collection(
+        # Xóa các vector cũ của cùng file này để tránh trùng lặp tài liệu khi nạp lại
+        try:
+            from qdrant_client.models import Filter, FieldCondition, MatchValue
+            self.client.delete(
                 collection_name=config.COLLECTION_NAME,
-                vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE)
+                points_selector=Filter(
+                    must=[
+                        FieldCondition(
+                            key="metadata.source",
+                            match=MatchValue(value=file_name)
+                        )
+                    ]
+                )
             )
+        except Exception:
+            pass
 
         self.vectorstore = QdrantVectorStore(
             client=self.client,
@@ -131,23 +119,14 @@ class FinancialRAG:
 
         search_kwargs = {"k": config.RETRIEVER_K}
         
-        # Nếu có session_id, thực hiện lọc metadata của Qdrant chỉ lấy các vector thuộc session hiện tại
-        if session_id is not None:
-            from qdrant_client.models import Filter, FieldCondition, MatchValue
-            search_kwargs["filter"] = Filter(
-                must=[
-                    FieldCondition(
-                        key="metadata.session_id",
-                        match=MatchValue(value=session_id)
-                    )
-                ]
-            )
+        # Để tư vấn luật toàn hệ thống, ta không áp dụng bộ lọc session_id vào retriever.
+        # Tất cả các phiên chat đều tìm kiếm chung trên kho dữ liệu luật pháp của Qdrant.
 
         retriever = self.vectorstore.as_retriever(search_kwargs=search_kwargs)
 
         # 1. Contextualize Question Prompt (deals with history)
-        contextualize_q_system_prompt = """Bạn là trợ lý AI. Dựa vào lịch sử hội thoại và câu hỏi mới nhất của người dùng,
-        hãy viết lại câu hỏi thành một câu hỏi độc lập có đầy đủ ý nghĩa. Không cần trả lời câu hỏi, chỉ cần viết lại nếu cần thiết, ngược lại giữ nguyên."""
+        contextualize_q_system_prompt = """Bạn là trợ lý AI chuyên về luật pháp. Dựa vào lịch sử hội thoại và câu hỏi mới nhất của người dùng,
+        hãy viết lại câu hỏi thành một câu hỏi độc lập có đầy đủ ý nghĩa pháp lý để phục vụ việc tra cứu. Không cần giải thích hay trả lời câu hỏi, chỉ cần viết lại nếu cần thiết, ngược lại giữ nguyên câu hỏi."""
         contextualize_q_prompt = ChatPromptTemplate.from_messages(
             [
                 ("system", contextualize_q_system_prompt),
@@ -160,14 +139,14 @@ class FinancialRAG:
         )
 
         # 2. Answer Question Prompt
-        qa_system_prompt = """Bạn là một chuyên gia phân tích tài chính cao cấp (Financial Analyst).
-        Nhiệm vụ của bạn là phân tích báo cáo tài chính và trả lời câu hỏi của người dùng dựa trên thông tin được cung cấp dưới đây.
+        qa_system_prompt = """Bạn là một chuyên gia tư vấn luật pháp Việt Nam chuyên nghiệp (Legal Advisor).
+        Nhiệm vụ của bạn là giải đáp thắc mắc của người dùng dựa trên thông tin ngữ cảnh (Context) các văn bản luật được cung cấp dưới đây.
         
         Quy tắc:
-        - Chỉ sử dụng dữ liệu trong Context để trả lời. Không bịa đặt số liệu.
-        - Nếu số liệu hoặc thông tin không có trong Context, hãy nói rõ: "Tôi không tìm thấy thông tin này trong tài liệu."
-        - Trả lời rõ ràng, mạch lạc, có thể dùng bullet points để dễ đọc. Trích dẫn nếu cần.
-        - Nếu câu hỏi yêu cầu so sánh hoặc tính toán đơn giản từ các số liệu có sẵn, hãy thực hiện cẩn thận.
+        - Chỉ sử dụng dữ liệu trong Context để trả lời. Không tự bịa đặt điều luật, số hiệu văn bản pháp lý hoặc thông tin không có trong tài liệu.
+        - Trích dẫn rõ ràng tên văn bản luật, số hiệu, điều, khoản, điểm (Ví dụ: "Theo Điều 5 Luật Đất đai 2024...") khi trả lời để câu trả lời có tính thuyết phục cao.
+        - Nếu thông tin không có trong Context hoặc Context không đủ để trả lời, hãy nói rõ: "Tôi không tìm thấy thông tin pháp lý này trong cơ sở dữ liệu luật hiện tại của hệ thống."
+        - Trả lời rõ ràng, mạch lạc bằng tiếng Việt, đúng thuật ngữ pháp lý. Có thể dùng các gạch đầu dòng để phân tách các quy định pháp luật cho người dùng dễ đọc.
         
         Context:
         {context}"""
@@ -196,7 +175,9 @@ class FinancialRAG:
         answer = response["answer"]
         sources = []
         for doc in response.get("context", []):
-            sources.append(f"Page {doc.metadata.get('page', 'Unknown')}")
+            doc_source = doc.metadata.get('source', 'Tài liệu luật')
+            doc_page = doc.metadata.get('page', 0) + 1
+            sources.append(f"{doc_source} (Trang {doc_page})")
             
         # Deduplicate sources
         sources = list(set(sources))
@@ -208,8 +189,8 @@ class FinancialRAG:
         docs = loader.load()
         
         # Để tránh vượt giới hạn Rate Limit (12,000 Tokens/phút) của Groq:
-        # Nếu file dài hơn 10 trang, chúng ta chọn lọc lấy 8 trang đầu (chứa tổng quan/số liệu chính)
-        # và 2 trang cuối (chứa kết luận kiểm toán/chữ ký) để tóm tắt.
+        # Nếu file dài hơn 10 trang, chọn lọc lấy 8 trang đầu (chứa tổng quan/phạm vi)
+        # và 2 trang cuối để tóm tắt.
         num_pages = len(docs)
         if num_pages <= 10:
             selected_docs = docs
@@ -224,38 +205,28 @@ class FinancialRAG:
         if len(full_text) > max_chars:
             full_text = full_text[:max_chars] + "\n\n[Tài liệu đã được lược bớt một số trang giữa để tránh vượt giới hạn API]"
             
-        prompt = f"""Bạn là một chuyên gia phân tích tài chính cao cấp (Financial Analyst).
-Nhiệm vụ của bạn là đọc toàn bộ văn bản báo cáo tài chính/bản cáo bạch/tài liệu dưới đây và viết một bản tóm tắt phân tích tài chính toàn diện, rõ ràng bằng tiếng Việt.
-
-Hãy tự động nhận diện loại hình tổ chức (ví dụ: Ngân hàng, Doanh nghiệp sản xuất/thương mại/dịch vụ, Công ty chứng khoán, Công ty bảo hiểm, Tập đoàn đa ngành,...) và điều chỉnh nội dung tóm tắt cho phù hợp nhất với đặc thù ngành nghề đó. Hãy tập trung xoay quanh đúng thông tin có trong file báo cáo, không áp đặt một kịch bản cố định nếu tài liệu không phù hợp.
+        prompt = f"""Bạn là một chuyên gia tư vấn luật pháp Việt Nam chuyên nghiệp (Legal Advisor).
+Nhiệm vụ của bạn là đọc toàn bộ văn bản pháp lý/luật/nghị định/thông tư dưới đây và viết một bản tóm tắt phân tích pháp lý toàn diện, rõ ràng bằng tiếng Việt.
 
 Yêu cầu nội dung bản tóm tắt cần làm rõ:
-1. **Thông tin chung về tổ chức:** 
-   - Xác định rõ tên đầy đủ của tổ chức (Ngân hàng, Công ty, Tổng công ty, Tập đoàn,...) và loại hình hoạt động chính.
-   - Thời kỳ/Niên độ báo cáo (ví dụ: Quý 1/2024, Năm 2023,...).
-2. **Kết quả hoạt động kinh doanh:**
-   - Trình bày các chỉ số doanh thu/thu nhập và lợi nhuận cốt lõi phù hợp với ngành. 
-   - *Ví dụ đối với Doanh nghiệp thông thường:* Doanh thu thuần, Giá vốn, Lợi nhuận gộp, Lợi nhuận trước & sau thuế, các chỉ số tăng trưởng.
-   - *Ví dụ đối với Ngân hàng:* Thu nhập lãi thuần, Thu nhập ngoài lãi, Chi phí hoạt động, Chi phí dự phòng rủi ro tín dụng, Lợi nhuận trước & sau thuế.
-   - *Ví dụ đối với Công ty chứng khoán:* Doanh thu hoạt động (tự doanh, môi giới, cho vay ký quỹ), Chi phí hoạt động, Lợi nhuận.
-3. **Tình hình tài chính & Cấu trúc vốn:**
-   - Trình bày các khoản mục tài sản và nguồn vốn trọng yếu phù hợp nhất với loại hình hoạt động.
-   - *Ví dụ đối với Doanh nghiệp thông thường:* Tiền và tương đương tiền, Phải thu khách hàng, Hàng tồn kho, Tài sản cố định, Nợ phải trả (đặc biệt là nợ vay ngắn/dài hạn), Vốn chủ sở hữu.
-   - *Ví dụ đối với Ngân hàng:* Tổng tài sản, Cho vay khách hàng, Dự phòng rủi ro cho vay, Tiền gửi của khách hàng, Phát hành giấy tờ có giá, Tỷ lệ nợ xấu (NPL) nếu có, Vốn chủ sở hữu.
-4. **Điểm nhấn nổi bật & Rủi ro:**
-   - Các điểm đáng chú ý trong kỳ báo cáo (tăng trưởng đột biến, các biến động lớn về tài sản/nguồn vốn, dòng tiền, hoặc các dự án lớn).
-   - Rủi ro nổi bật (rủi ro thanh khoản, rủi ro nợ xấu, biến động lãi suất, tỷ giá, thị trường,...).
-5. **Ý kiến kiểm toán (nếu có):**
-   - Ý kiến của đơn vị kiểm toán độc lập (chấp nhận toàn phần, ngoại trừ, trái ngược, từ chối đưa ra ý kiến).
+1. **Thông tin chung về văn bản:** 
+   - Tên đầy đủ của văn bản luật/nghị định/thông tư/quyết định.
+   - Cơ quan ban hành, ngày ban hành và ngày có hiệu lực (nếu có trong tài liệu).
+2. **Phạm vi điều chỉnh & Đối tượng áp dụng:**
+   - Văn bản này điều chỉnh những vấn đề gì và áp dụng cho những ai.
+3. **Các nội dung cốt lõi/Điểm mới nổi bật:**
+   - Tóm tắt các chương, điều khoản quan trọng nhất hoặc những điểm mới nổi bật so với quy định cũ.
+4. **Các lưu ý quan trọng hoặc chế tài liên quan:**
+   - Những quy định cần đặc biệt tuân thủ hoặc các chế tài xử phạt/nghĩa vụ pháp lý đáng chú ý.
 
 Văn bản tài liệu:
 ---
 {full_text}
 ---
 
-Hãy viết bản tóm tắt một cách tự nhiên, mạch lạc, trực tiếp đi vào các số liệu của tổ chức trong tài liệu, sử dụng đúng thuật ngữ chuyên ngành tài chính của loại hình tổ chức đó.
+Hãy viết bản tóm tắt một cách tự nhiên, mạch lạc, trực tiếp đi vào các nội dung chính của văn bản, sử dụng đúng thuật ngữ pháp lý.
 
-BẢN TÓM TẮT BÁO CÁO TÀI CHÍNH CHI TIẾT:"""
+BẢN TÓM TẮT VĂN BẢN PHÁP LUẬT CHI TIẾT:"""
 
         response = self.llm.invoke(prompt)
         return response.content
