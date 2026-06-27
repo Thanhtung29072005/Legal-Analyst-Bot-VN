@@ -117,19 +117,24 @@ class FinancialRAG:
         if not self.vectorstore:
             return []
         try:
-            response, _ = self.client.scroll(
-                collection_name=config.COLLECTION_NAME,
-                limit=1000,
-                with_payload=True,
-                with_vectors=False
-            )
             sources = set()
-            for point in response:
-                payload = point.payload
-                metadata = payload.get("metadata", {})
-                source = metadata.get("source") or payload.get("source")
-                if source:
-                    sources.add(source)
+            next_page_offset = None
+            while True:
+                response, next_page_offset = self.client.scroll(
+                    collection_name=config.COLLECTION_NAME,
+                    limit=1000,
+                    offset=next_page_offset,
+                    with_payload=True,
+                    with_vectors=False
+                )
+                for point in response:
+                    payload = point.payload
+                    metadata = payload.get("metadata", {})
+                    source = metadata.get("source") or payload.get("source")
+                    if source:
+                        sources.add(source)
+                if next_page_offset is None:
+                    break
             return sorted(list(sources))
         except Exception:
             return []
