@@ -9,6 +9,43 @@ class SQLDatabase:
         self.trusted = config.SQL_TRUSTED_CONNECTION
         self.username = config.SQL_USERNAME
         self.password = config.SQL_PASSWORD
+        self.create_tables_if_not_exist()
+
+    def create_tables_if_not_exist(self):
+        """Tự động tạo các bảng Chat_Sessions và Chat_Messages nếu chưa có trong Database."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Chat_Sessions' AND xtype='U')
+            BEGIN
+                CREATE TABLE Chat_Sessions (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    pdf_name NVARCHAR(255) NULL,
+                    pdf_summary NVARCHAR(MAX) NULL,
+                    created_at DATETIME DEFAULT GETDATE()
+                )
+            END
+            """)
+            
+            cursor.execute("""
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Chat_Messages' AND xtype='U')
+            BEGIN
+                CREATE TABLE Chat_Messages (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    session_id INT FOREIGN KEY REFERENCES Chat_Sessions(id) ON DELETE CASCADE,
+                    sender VARCHAR(20) NOT NULL,
+                    message NVARCHAR(MAX) NULL,
+                    created_at DATETIME DEFAULT GETDATE()
+                )
+            END
+            """)
+            conn.commit()
+        except Exception as e:
+            print(f"[!] Lỗi khi tự động tạo bảng trong SQL Server: {e}")
+            raise e
+        finally:
+            conn.close()
 
     def get_connection(self):
         """Tạo kết nối tới SQL Server dựa trên cấu hình."""

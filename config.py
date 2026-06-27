@@ -30,7 +30,7 @@ LLM_MAX_TOKENS = 1024
 # Tăng số lượng chunk trả về để có nhiều ngữ cảnh luật hơn
 RETRIEVER_K = 6
 
-# SQL Server configurations
+# SQL Server configurations 
 SQL_SERVER = os.getenv("SQL_SERVER", "localhost")
 SQL_DATABASE = os.getenv("SQL_DATABASE", "Legal_Chatbot_DB")
 SQL_TRUSTED_CONNECTION = os.getenv("SQL_TRUSTED_CONNECTION", "yes") # "yes" cho Windows Auth, "no" cho SQL Server Auth

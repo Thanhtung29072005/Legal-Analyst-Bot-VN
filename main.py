@@ -15,6 +15,60 @@ st.set_page_config(
     layout="wide"
 )
 
+# Custom styling to make the app look premium
+st.markdown("""
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+    /* Styling headers and fonts */
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    .main-title {
+        font-family: 'Outfit', sans-serif !important;
+        font-weight: 800 !important;
+        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%) !important;
+        -webkit-background-clip: text !important;
+        -webkit-text-fill-color: transparent !important;
+        margin-bottom: 5px !important;
+        padding-top: 10px !important;
+    }
+    
+    .subtitle {
+        font-size: 1.1rem;
+        color: #64748b;
+        margin-bottom: 25px;
+    }
+    
+    /* Buttons custom styling */
+    div.stButton > button {
+        border-radius: 8px !important;
+        border: 1px solid #e2e8f0 !important;
+        font-weight: 500 !important;
+        transition: all 0.2s ease-in-out !important;
+    }
+    
+    div.stButton > button:hover {
+        border-color: #3b82f6 !important;
+        color: #3b82f6 !important;
+        background-color: rgba(59, 130, 246, 0.05) !important;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    }
+    
+    /* Custom disclaimer footer */
+    .legal-footer {
+        text-align: center;
+        padding: 20px;
+        font-size: 0.8rem;
+        color: #64748b;
+        border-top: 1px solid #e2e8f0;
+        margin-top: 40px;
+        line-height: 1.5;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # Initialize Database with fallback
 use_db = False
 db_error_msg = None
@@ -84,31 +138,34 @@ with st.sidebar:
     if st.button("⚙️  Nạp vào Kho Luật Chung", use_container_width=True):
         if uploaded_file is not None:
             with st.status("Đang phân tích và nạp tài liệu luật...", expanded=True) as status:
-                st.write("Đang đọc văn bản luật PDF...")
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-                    tmp_file.write(uploaded_file.getvalue())
-                    tmp_path = tmp_file.name
+                st.write("Đang lưu trữ tệp PDF vào thư mục luật...")
+                # Tạo thư mục data/laws nếu chưa tồn tại
+                laws_dir = os.path.join("data", "laws")
+                os.makedirs(laws_dir, exist_ok=True)
+                
+                # Lưu tệp PDF thực tế vào thư mục data/laws/
+                save_path = os.path.join(laws_dir, uploaded_file.name)
+                with open(save_path, "wb") as f:
+                    f.write(uploaded_file.getvalue())
                 
                 st.write("Đang phân tích điều luật và tạo vector index...")
                 try:
                     if use_db and st.session_state.session_id is None:
                         st.session_state.session_id = db.create_session(uploaded_file.name, "")
                         
-                    num_chunks = rag_engine.load_and_index_pdf(tmp_path, st.session_state.session_id)
+                    num_chunks = rag_engine.load_and_index_pdf(save_path, st.session_state.session_id)
                     st.session_state.db_ready = True
                     st.write("Đang khởi tạo bản tóm tắt văn bản luật...")
-                    summary_text = rag_engine.summarize_pdf(tmp_path)
+                    summary_text = rag_engine.summarize_pdf(save_path)
                     st.session_state.summary = summary_text
                     
                     if use_db:
                         db.update_session_pdf(st.session_state.session_id, uploaded_file.name, summary_text)
                             
-                    status.update(label=f"Nạp luật thành công! Đã lập chỉ mục {num_chunks} điều khoản.", state="complete", expanded=False)
+                    status.update(label=f"Nạp luật thành công! Đã lưu file và lập chỉ mục {num_chunks} điều khoản.", state="complete", expanded=False)
                     st.rerun()
                 except Exception as e:
                     status.update(label=f"Lỗi: {str(e)}", state="error", expanded=False)
-                finally:
-                    os.remove(tmp_path)
         else:
             st.warning("Vui lòng tải lên một file PDF trước khi nạp.")
 
@@ -140,16 +197,30 @@ with st.sidebar:
         st.warning("⚠️ SQL Server chưa kết nối")
         st.caption(f"Lỗi: {db_error_msg}")
 
+    # Hiển thị danh sách các tài liệu luật đã nạp vào hệ thống
+    st.write("---")
+    st.markdown("### 📚 Thư viện Luật Đã Nạp")
+    try:
+        indexed_docs = rag_engine.get_indexed_documents()
+        if indexed_docs:
+            for doc in indexed_docs:
+                st.caption(f"📄 {doc}")
+        else:
+            st.caption("Chưa có tài liệu luật nào trong kho.")
+    except Exception:
+        st.caption("Không thể tải danh sách tài liệu.")
+
 # Main Chat Area
-st.title("Trợ lý Tư vấn Luật pháp Việt Nam ⚖️")
+st.markdown('<h1 class="main-title">Trợ lý Tư vấn Luật pháp Việt Nam ⚖️</h1>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Tra cứu nhanh chóng, trích dẫn chính xác nguồn dữ liệu luật pháp chính thống</p>', unsafe_allow_html=True)
 
 # Kiểm tra RAG engine có dữ liệu không (dù session mới hay cũ)
 has_vectorstore = rag_engine.vectorstore is not None
 
 if not has_vectorstore:
-    st.info("👋 Chào mừng bạn! Hệ thống sẽ tra cứu thông tin dựa trên kho văn bản luật hiện có. Nếu muốn bổ sung văn bản luật mới, vui lòng tải file PDF lên ở thanh bên trái và chọn 'Nạp vào Kho Luật Chung'.")
+    st.info("👋 Chào mừng bạn! Thư viện luật hiện tại đang trống. Vui lòng nạp thêm tài liệu luật bằng cách chọn file PDF ở thanh bên trái và bấm **'Nạp vào Kho Luật Chung'**, hoặc chạy script `ingest_laws.py` từ thư mục dự án.")
 else:
-    # Hiển thị Bản tóm tắt nhanh báo cáo tài chính nếu có
+    # Hiển thị Bản tóm tắt nhanh văn bản luật vừa nạp nếu có
     if st.session_state.get("summary"):
         with st.expander("📌 Bản tóm tắt nhanh văn bản pháp luật vừa nạp", expanded=False):
             st.markdown(st.session_state.summary)
@@ -160,8 +231,45 @@ else:
         with st.chat_message(role):
             st.markdown(message.content)
 
+    # Hiển thị lời chào và gợi ý câu hỏi nếu chưa có tin nhắn nào
+    if len(st.session_state.messages) == 0:
+        st.markdown("""
+        <div style="background-color: rgba(30, 58, 138, 0.04); padding: 20px; border-radius: 12px; border-left: 5px solid #1e3a8a; margin-bottom: 25px;">
+            <h4 style="margin-top:0; color:#1e3a8a; font-family:'Outfit', sans-serif;">⚖️ Chào mừng bạn đến với Trợ Lý Luật Pháp Việt Nam AI</h4>
+            <p style="font-size: 0.95rem; line-height: 1.6; margin-bottom: 0;">
+                Hệ thống hỗ trợ tra cứu các văn bản luật có trong thư mục luật dùng chung. 
+                Khi trả lời, AI sẽ tự động tìm kiếm cơ sở dữ liệu luật pháp và trích dẫn rõ ràng tên văn bản, điều, khoản và số trang tương ứng.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("#### 💡 Gợi ý một số câu hỏi mẫu:")
+        cols = st.columns(2)
+        suggestions = [
+            ("Luật Đất Đai", "Điều kiện để hộ gia đình, cá nhân được cấp sổ đỏ (Giấy chứng nhận quyền sử dụng đất) mới nhất là gì?", "🏞️"),
+            ("Luật Nhà Ở", "Những đối tượng nào được hỗ trợ giải quyết mua nhà ở xã hội?", "🏠"),
+            ("Luật Lao Động", "Khi người lao động đơn phương chấm dứt hợp đồng lao động đúng luật thì được hưởng các quyền lợi và trợ cấp nào?", "💼"),
+            ("Luật Doanh Nghiệp", "Quy trình thủ tục thành lập công ty TNHH có từ 2 thành viên trở lên gồm những bước nào?", "🏢")
+        ]
+        
+        for i, (category, prompt_text, icon) in enumerate(suggestions):
+            col = cols[i % 2]
+            if col.button(f"{icon} **{category}**: {prompt_text[:60]}...", use_container_width=True, key=f"sugg_{i}"):
+                st.session_state.temp_prompt = prompt_text
+                st.rerun()
+
+    # Nhận câu hỏi từ input chat hoặc gợi ý mẫu
+    prompt_input = st.chat_input("Nhập câu hỏi pháp luật (Ví dụ: Điều kiện được cấp sổ đỏ là gì?)")
+    
+    prompt = None
+    if "temp_prompt" in st.session_state and st.session_state.temp_prompt:
+        prompt = st.session_state.temp_prompt
+        del st.session_state.temp_prompt
+    elif prompt_input:
+        prompt = prompt_input
+
     # React to user input
-    if prompt := st.chat_input("Nhập câu hỏi pháp luật (Ví dụ: Điều kiện được cấp sổ đỏ là gì?)"):
+    if prompt:
         # Display user message in chat message container
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -198,3 +306,10 @@ else:
                         db.save_message(st.session_state.session_id, "assistant", answer)
                 except Exception as e:
                     st.error(f"Đã xảy ra lỗi khi truy vấn: {str(e)}")
+
+# Tuyên bố miễn trừ trách nhiệm pháp lý ở cuối trang
+st.markdown("""
+<div class="legal-footer">
+    ⚠️ <b>Khuyến cáo pháp lý:</b> Thông tin cung cấp bởi Trợ lý AI chỉ mang tính chất tham khảo dựa trên các tài liệu luật hiện có trong hệ thống và không thay thế cho các ý kiến tư vấn pháp lý chuyên môn từ Luật sư hoặc Cơ quan tư pháp có thẩm quyền.
+</div>
+""", unsafe_allow_html=True)

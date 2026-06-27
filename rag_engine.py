@@ -112,6 +112,28 @@ class FinancialRAG:
                 pass
         return False
 
+    def get_indexed_documents(self):
+        """Lấy danh sách các tài liệu luật (tên file PDF) đã được nạp vào Qdrant."""
+        if not self.vectorstore:
+            return []
+        try:
+            response, _ = self.client.scroll(
+                collection_name=config.COLLECTION_NAME,
+                limit=1000,
+                with_payload=True,
+                with_vectors=False
+            )
+            sources = set()
+            for point in response:
+                payload = point.payload
+                metadata = payload.get("metadata", {})
+                source = metadata.get("source") or payload.get("source")
+                if source:
+                    sources.add(source)
+            return sorted(list(sources))
+        except Exception:
+            return []
+
     def get_conversation_chain(self, session_id=None):
         """Builds a history-aware RAG chain."""
         if not self.vectorstore:
