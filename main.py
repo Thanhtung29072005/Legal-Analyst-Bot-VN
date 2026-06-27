@@ -179,6 +179,7 @@ st.markdown("""
         color: #991b1b !important;
     }
     
+    
     /* File uploader custom borders */
     [data-testid="stFileUploader"] {
         border: 1px dashed #cbd5e1 !important;
@@ -307,6 +308,8 @@ def get_rag_engine():
 
 rag_engine = get_rag_engine()
 
+
+
 if "db_ready" not in st.session_state:
     st.session_state.db_ready = rag_engine.vectorstore is not None
 
@@ -416,18 +419,7 @@ with st.sidebar:
         st.warning("⚠️ SQL Server chưa kết nối")
         st.caption(f"Lỗi: {db_error_msg}")
 
-    # Hiển thị danh sách các tài liệu luật đã nạp vào hệ thống
-    st.write("---")
-    st.markdown("### 📚 Thư viện Luật Đã Nạp")
-    try:
-        indexed_docs = rag_engine.get_indexed_documents()
-        if indexed_docs:
-            for doc in indexed_docs:
-                st.caption(f"📄 {doc}")
-        else:
-            st.caption("Chưa có tài liệu luật nào trong kho.")
-    except Exception:
-        st.caption("Không thể tải danh sách tài liệu.")
+
 
 # Main Chat Area
 st.markdown("""

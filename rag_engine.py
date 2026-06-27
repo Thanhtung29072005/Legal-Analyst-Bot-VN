@@ -10,6 +10,63 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langchain_classic.chains.history_aware_retriever import create_history_aware_retriever
 
 import config
+import re
+from langchain_core.documents import Document
+
+def split_by_articles(docs):
+    """Chia văn bản luật thành các Điều (Articles) thay vì chia theo dung lượng ký tự ngẫu nhiên."""
+    full_text = ""
+    page_map = []  # Lưu dải chỉ số ký tự thuộc trang nào [(start_char_idx, end_char_idx, page_num)]
+    
+    for doc in docs:
+        start_idx = len(full_text)
+        full_text += doc.page_content + "\n"
+        end_idx = len(full_text)
+        page_map.append((start_idx, end_idx, doc.metadata.get("page", 0)))
+        
+    # Phát hiện điểm bắt đầu của Điều luật (ví dụ: "Điều 5. ..." ở đầu dòng)
+    article_regex = re.compile(r'^(?:Điều|ĐIỀU)\s+(\d+[a-z]?)\b', re.MULTILINE)
+    matches = list(article_regex.finditer(full_text))
+    
+    if len(matches) < 3:
+        # Nếu có ít hơn 3 tiêu chuẩn Điều luật, có thể là văn bản thường -> dùng mặc định
+        return None
+        
+    chunks = []
+    chapter_regex = re.compile(r'(?:Chương|CHƯƠNG)\s+([I|V|X|L|C\d]+)', re.IGNORECASE)
+    
+    for i in range(len(matches)):
+        start = matches[i].start()
+        end = matches[i+1].start() if i + 1 < len(matches) else len(full_text)
+        
+        article_num = matches[i].group(1)
+        chunk_text = full_text[start:end].strip()
+        
+        # Tìm xem Điều này thuộc trang nào trong PDF gốc
+        page_num = 0
+        for p_start, p_end, p_val in page_map:
+            if p_start <= start < p_end:
+                page_num = p_val
+                break
+                
+        # Tìm Chương gần nhất nằm trước Điều luật này
+        active_chapter = "Chưa rõ"
+        text_before = full_text[:start]
+        chapters = list(chapter_regex.finditer(text_before))
+        if chapters:
+            active_chapter = f"Chương {chapters[-1].group(1)}"
+            
+        doc = Document(
+            page_content=chunk_text,
+            metadata={
+                "article": f"Điều {article_num}",
+                "chapter": active_chapter,
+                "page": page_num
+            }
+        )
+        chunks.append(doc)
+        
+    return chunks
 
 class FinancialRAG:
     def __init__(self):
@@ -40,17 +97,74 @@ class FinancialRAG:
         # Will hold the Qdrant vector store
         self.vectorstore = None
 
+    def extract_entities_from_query(self, query: str):
+        """Dùng LLM để trích xuất Điều, Chương và tên Luật từ câu hỏi của người dùng."""
+        prompt = f"""Bạn là trợ lý AI chuyên về luật pháp Việt Nam. Nhiệm vụ của bạn là phân tích câu hỏi của người dùng và trích xuất các thông tin cấu trúc sau (nếu có):
+        1. Số Điều luật (Ví dụ: "Điều 5", "Điều 100", "Điều 10a")
+        2. Số Chương (Ví dụ: "Chương I", "Chương III")
+        3. Loại văn bản hoặc Tên luật (Ví dụ: "Luật Đất Đai", "Luật Hôn nhân", "Nghị định 15")
+        
+        Hãy trả về kết quả dưới định dạng JSON với các khóa: "article", "chapter", "law_name". Nếu không có thông tin nào, hãy để giá trị là null.
+        Không giải thích gì thêm, chỉ trả về chuỗi JSON hợp lệ.
+        
+        Ví dụ:
+        "Điều kiện cấp sổ đỏ theo Điều 100 Luật Đất Đai là gì?" -> {{"article": "Điều 100", "chapter": null, "law_name": "Luật Đất Đai"}}
+        "Quy định tại Chương II Luật Hôn nhân" -> {{"article": null, "chapter": "Chương II", "law_name": "Luật Hôn nhân"}}
+        "Độ tuổi đăng ký kết hôn là bao nhiêu?" -> {{"article": null, "chapter": null, "law_name": null}}
+        
+        Câu hỏi: "{query}"
+        JSON:"""
+        
+        try:
+            response = self.llm.invoke(prompt)
+            import json
+            content = response.content.strip()
+            if content.startswith("```"):
+                content = content.split("```")[1]
+                if content.startswith("json"):
+                    content = content[4:]
+            data = json.loads(content.strip())
+            return data
+        except Exception:
+            return {"article": None, "chapter": None, "law_name": None}
+
+    def rewrite_question(self, question, chat_history):
+        """Viết lại câu hỏi dựa trên lịch sử chat để làm câu hỏi độc lập."""
+        if not chat_history:
+            return question
+            
+        prompt = f"""Bạn là trợ lý AI chuyên về luật pháp. Dựa vào lịch sử hội thoại và câu hỏi mới nhất của người dùng,
+        hãy viết lại câu hỏi thành một câu hỏi độc lập có đầy đủ ý nghĩa pháp lý để phục vụ việc tra cứu. Không cần giải thích hay trả lời câu hỏi, chỉ cần viết lại nếu cần thiết, ngược lại giữ nguyên câu hỏi.
+        
+        Lịch sử chat:
+        {chat_history}
+        
+        Câu hỏi mới: {question}
+        Câu hỏi viết lại:"""
+        
+        try:
+            response = self.llm.invoke(prompt)
+            return response.content.strip()
+        except Exception:
+            return question
+
     def load_and_index_pdf(self, file_path, session_id=None):
         """Loads a PDF, splits it, and stores it in Qdrant Local."""
         loader = PyPDFLoader(file_path)
         docs = loader.load()
 
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=config.CHUNK_SIZE,
-            chunk_overlap=config.CHUNK_OVERLAP,
-            separators=["\n\n", "\n", ".", " ", ""]
-        )
-        splits = text_splitter.split_documents(docs)
+        # Thử phân chia theo cấu trúc các Điều luật (Articles) trước
+        splits = split_by_articles(docs)
+        is_article_split = splits is not None
+        
+        if not is_article_split:
+            # Fallback nếu không phải cấu trúc luật: chia theo độ dài ký tự
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=config.CHUNK_SIZE,
+                chunk_overlap=config.CHUNK_OVERLAP,
+                separators=["\n\n", "\n", ".", " ", ""]
+            )
+            splits = text_splitter.split_documents(docs)
 
         # Gắn nguồn (file_name) và session_id vào metadata
         import os
@@ -112,6 +226,31 @@ class FinancialRAG:
                 pass
         return False
 
+    def delete_document(self, file_name):
+        """Xóa hoàn toàn một tài liệu khỏi cơ sở dữ liệu Qdrant và thư mục data/laws."""
+        import os
+        try:
+            from qdrant_client.models import Filter, FieldCondition, MatchValue
+            # Xóa khỏi Qdrant
+            self.client.delete(
+                collection_name=config.COLLECTION_NAME,
+                points_selector=Filter(
+                    must=[
+                        FieldCondition(
+                            key="metadata.source",
+                            match=MatchValue(value=file_name)
+                        )
+                    ]
+                )
+            )
+            # Xóa file vật lý nếu có
+            file_path = os.path.join("data", "laws", file_name)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            return True
+        except Exception:
+            return False
+
     def get_indexed_documents(self):
         """Lấy danh sách các tài liệu luật (tên file PDF) đã được nạp vào Qdrant."""
         if not self.vectorstore:
@@ -172,7 +311,8 @@ class FinancialRAG:
         Quy tắc:
         - Chỉ sử dụng dữ liệu trong Context để trả lời. Không tự bịa đặt điều luật, số hiệu văn bản pháp lý hoặc thông tin không có trong tài liệu.
         - Trích dẫn rõ ràng tên văn bản luật, số hiệu, điều, khoản, điểm (Ví dụ: "Theo Điều 5 Luật Đất đai 2024...") khi trả lời để câu trả lời có tính thuyết phục cao.
-        - Nếu thông tin không có trong Context hoặc Context không đủ để trả lời, hãy nói rõ: "Tôi không tìm thấy thông tin pháp lý này trong cơ sở dữ liệu luật hiện tại của hệ thống."
+        - Linh hoạt về thuật ngữ: Nếu người dùng sử dụng từ ngữ đời thường hoặc thuật ngữ không chuẩn xác tuyệt đối nhưng có ý nghĩa tương đương hoặc liên quan mật thiết với nội dung trong Context (ví dụ: dùng "vô ý giết người" thay vì "vô ý làm chết người"), hãy chủ động giải đáp dựa trên các điều luật liên quan đó và hướng dẫn lại thuật ngữ pháp lý chính xác cho họ. Không trả lời cứng nhắc là "không tìm thấy" trong trường hợp này.
+        - Chỉ trả lời: "Tôi không tìm thấy thông tin pháp lý này trong cơ sở dữ liệu luật hiện tại của hệ thống." khi nội dung câu hỏi hoàn toàn lệch hướng, không liên quan hoặc Context không chứa bất kỳ thông tin nào liên quan.
         - Trả lời rõ ràng, mạch lạc bằng tiếng Việt, đúng thuật ngữ pháp lý. Có thể dùng các gạch đầu dòng để phân tách các quy định pháp luật cho người dùng dễ đọc.
         
         Context:
@@ -193,22 +333,146 @@ class FinancialRAG:
         
         return rag_chain
 
+    def get_qa_chain(self):
+        """Tạo chain trả lời câu hỏi dựa trên Context."""
+        qa_system_prompt = """Bạn là một chuyên gia tư vấn luật pháp Việt Nam chuyên nghiệp (Legal Advisor).
+        Nhiệm vụ của bạn là giải đáp thắc mắc của người dùng dựa trên thông tin ngữ cảnh (Context) các văn bản luật được cung cấp dưới đây.
+        
+        Quy tắc:
+        - Chỉ sử dụng dữ liệu trong Context để trả lời. Không tự bịa đặt điều luật, số hiệu văn bản pháp lý hoặc thông tin không có trong tài liệu.
+        - Trích dẫn rõ ràng tên văn bản luật, số hiệu, điều, khoản, điểm (Ví dụ: "Theo Điều 5 Luật Đất đai 2024...") khi trả lời để câu trả lời có tính thuyết phục cao.
+        - Linh hoạt về thuật ngữ: Nếu người dùng sử dụng từ ngữ đời thường hoặc thuật ngữ không chuẩn xác tuyệt đối nhưng có ý nghĩa tương đương hoặc liên quan mật thiết với nội dung trong Context (ví dụ: dùng "vô ý giết người" thay vì "vô ý làm chết người"), hãy chủ động giải đáp dựa trên các điều luật liên quan đó và hướng dẫn lại thuật ngữ pháp lý chính xác cho họ. Không trả lời cứng nhắc là "không tìm thấy" trong trường hợp này.
+        - Chỉ trả lời: "Tôi không tìm thấy thông tin pháp lý này trong cơ sở dữ liệu luật hiện tại của hệ thống." khi nội dung câu hỏi hoàn toàn lệch hướng, không liên quan hoặc Context không chứa bất kỳ thông tin nào liên quan.
+        - Trả lời rõ ràng, mạch lạc bằng tiếng Việt, đúng thuật ngữ pháp lý. Có thể dùng các gạch đầu dòng để phân tách các quy định pháp luật cho người dùng dễ đọc.
+        
+        Context:
+        {context}"""
+        
+        qa_prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", qa_system_prompt),
+                MessagesPlaceholder("chat_history"),
+                ("human", "{input}"),
+            ]
+        )
+        return create_stuff_documents_chain(self.llm, qa_prompt)
+
     def ask(self, question, chat_history, session_id=None):
         """Asks a question with history and returns the answer and sources."""
-        chain = self.get_conversation_chain(session_id)
-        # chat_history format should be a list of BaseMessage (HumanMessage, AIMessage)
-        response = chain.invoke({"input": question, "chat_history": chat_history})
+        # 1. Viết lại câu hỏi độc lập
+        rewritten_question = self.rewrite_question(question, chat_history)
         
-        answer = response["answer"]
+        # 2. Trích xuất thực thể từ câu hỏi viết lại
+        entities = self.extract_entities_from_query(rewritten_question)
+        
+        # 3. Ánh xạ law_name sang tên file nguồn trong Qdrant
+        source_filter = None
+        if entities.get("law_name"):
+            normalized_law_name = entities["law_name"].lower().replace(" ", "")
+            indexed_docs = self.get_indexed_documents()
+            for doc_name in indexed_docs:
+                normalized_doc = doc_name.lower().replace(" ", "")
+                if normalized_law_name in normalized_doc or normalized_doc in normalized_law_name:
+                    source_filter = doc_name
+                    break
+        
+        # 4. Tạo bộ lọc Qdrant Filter
+        from qdrant_client.models import Filter, FieldCondition, MatchValue
+        must_conditions = []
+        
+        if source_filter:
+            must_conditions.append(
+                FieldCondition(
+                    key="metadata.source",
+                    match=MatchValue(value=source_filter)
+                )
+            )
+            
+        if entities.get("article"):
+            must_conditions.append(
+                FieldCondition(
+                    key="metadata.article",
+                    match=MatchValue(value=entities["article"])
+                )
+            )
+            
+        if entities.get("chapter"):
+            must_conditions.append(
+                FieldCondition(
+                    key="metadata.chapter",
+                    match=MatchValue(value=entities["chapter"])
+                )
+            )
+            
+        qdrant_filter = Filter(must=must_conditions) if must_conditions else None
+        
+        # 5. Truy vấn tương đồng trong Vectorstore
+        if not self.vectorstore:
+            raise ValueError("Vectorstore not initialized.")
+            
+        results = []
+        try:
+            results = self.vectorstore.similarity_search(
+                query=rewritten_question,
+                k=config.RETRIEVER_K,
+                filter=qdrant_filter
+            )
+        except Exception:
+            # Bỏ qua nếu có lỗi lọc
+            pass
+            
+        # 6. Fallback nếu không có kết quả với bộ lọc cứng
+        if not results and qdrant_filter:
+            try:
+                # Relax filter: chỉ lọc theo tên file luật
+                if source_filter:
+                    relaxed_filter = Filter(must=[
+                        FieldCondition(
+                            key="metadata.source",
+                            match=MatchValue(value=source_filter)
+                        )
+                    ])
+                    results = self.vectorstore.similarity_search(
+                        query=rewritten_question,
+                        k=config.RETRIEVER_K,
+                        filter=relaxed_filter
+                    )
+                # Nếu vẫn không thấy hoặc không có source, tìm kiếm không bộ lọc
+                if not results:
+                    results = self.vectorstore.similarity_search(
+                        query=rewritten_question,
+                        k=config.RETRIEVER_K
+                    )
+            except Exception:
+                pass
+                
+        # 7. Trả lời câu hỏi bằng chain
+        qa_chain = self.get_qa_chain()
+        response = qa_chain.invoke({
+            "input": rewritten_question,
+            "chat_history": chat_history,
+            "context": results
+        })
+        
+        # 8. Định dạng nguồn dẫn chiếu chi tiết
         sources = []
-        for doc in response.get("context", []):
+        for doc in results:
             doc_source = doc.metadata.get('source', 'Tài liệu luật')
             doc_page = doc.metadata.get('page', 0) + 1
-            sources.append(f"{doc_source} (Trang {doc_page})")
+            doc_article = doc.metadata.get('article')
+            doc_chapter = doc.metadata.get('chapter')
+            
+            ref_str = f"{doc_source} (Trang {doc_page})"
+            if doc_article:
+                if doc_chapter and doc_chapter != "Chưa rõ":
+                    ref_str = f"{doc_article} ({doc_chapter}) - {ref_str}"
+                else:
+                    ref_str = f"{doc_article} - {ref_str}"
+            sources.append(ref_str)
             
         # Deduplicate sources
         sources = list(set(sources))
-        return answer, sources
+        return response, sources
 
     def summarize_pdf(self, file_path):
         """Extracts text from PDF and gets a full summary from LLM using stuffing."""
