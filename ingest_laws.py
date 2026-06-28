@@ -22,7 +22,7 @@ def main():
     print(f"[*] Tìm thấy {len(pdf_files)} file PDF luật để nạp...")
     
     # Khởi tạo RAG Engine
-    from rag_engine import FinancialRAG
+    from source.Function.search_Qdrant import FinancialRAG
     rag_engine = FinancialRAG()
     
     for pdf_path in pdf_files:

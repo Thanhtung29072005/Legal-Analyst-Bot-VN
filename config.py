@@ -1,4 +1,6 @@
 import os
+from dotenv import load_dotenv
+load_dotenv(override=True)
 
 # Qdrant configurations
 QDRANT_PATH = os.path.join(os.path.dirname(__file__), "qdrant_db")
@@ -22,13 +24,13 @@ CHUNK_OVERLAP = 300
 
 # LLM Settings
 # We use Groq's fast models. llama-3.3-70b-versatile or mixtral-8x7b-32768
-LLM_MODEL = "llama-3.3-70b-versatile"
+LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
 LLM_TEMPERATURE = 0.1 # Keep it low for precise factual retrieval
-LLM_MAX_TOKENS = 1024
+LLM_MAX_TOKENS = 2048
 
 # Retrieval Settings
 # Tăng số lượng chunk trả về để có nhiều ngữ cảnh luật hơn
-RETRIEVER_K = 6
+RETRIEVER_K = 10
 
 # SQL Server configurations 
 SQL_SERVER = os.getenv("SQL_SERVER", "localhost")

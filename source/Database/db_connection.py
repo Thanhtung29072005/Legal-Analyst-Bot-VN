@@ -1,6 +1,11 @@
+import os
+import sys
 import pyodbc
-import config
 from langchain_core.messages import HumanMessage, AIMessage
+
+# Ensure parent directory is in path to import config
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+import config
 
 class SQLDatabase:
     def __init__(self):

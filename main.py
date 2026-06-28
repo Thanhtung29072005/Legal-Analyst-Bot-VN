@@ -1,12 +1,11 @@
+from dotenv import load_dotenv
+load_dotenv(override=True)
+
 import os
 import tempfile
 import streamlit as st
-from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, AIMessage
-from rag_engine import FinancialRAG
-
-# Load environment variables
-load_dotenv()
+from source.Function.search_Qdrant import FinancialRAG
 
 # Setup Streamlit page config
 st.set_page_config(
@@ -16,263 +15,11 @@ st.set_page_config(
 )
 
 # Custom styling to make the app look premium
-st.markdown("""
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<style>
-    /* Styling headers and fonts */
-    html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
-        background-color: #f8fafc;
-    }
-    
-    .stApp {
-        background-color: #f8fafc;
-    }
-    
-    /* Brand Header */
-    .brand-header {
-        margin-bottom: 2rem;
-        padding-bottom: 1.5rem;
-        border-bottom: 1px solid #e2e8f0;
-    }
-    .brand-tag {
-        font-family: 'Outfit', sans-serif;
-        font-size: 0.75rem;
-        font-weight: 700;
-        letter-spacing: 0.15em;
-        color: #b45309; /* Justice Gold */
-        margin-bottom: 0.5rem;
-    }
-    .main-title {
-        font-family: 'Outfit', sans-serif !important;
-        font-weight: 800 !important;
-        font-size: 2.25rem !important;
-        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%) !important;
-        -webkit-background-clip: text !important;
-        -webkit-text-fill-color: transparent !important;
-        margin: 0 0 0.5rem 0 !important;
-        line-height: 1.2 !important;
-    }
-    .subtitle {
-        font-family: 'Inter', sans-serif;
-        font-size: 1rem;
-        color: #64748b;
-        margin: 0 !important;
-    }
-    
-    /* Welcome Card Styling */
-    .welcome-card {
-        background-color: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-left: 4px solid #b45309; /* Gold accent */
-        border-radius: 12px;
-        padding: 1.5rem;
-        margin-bottom: 2rem;
-        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.02);
-    }
-    .welcome-badge {
-        display: inline-block;
-        background-color: #fef3c7;
-        color: #b45309;
-        font-size: 0.7rem;
-        font-weight: 700;
-        padding: 0.25rem 0.5rem;
-        border-radius: 4px;
-        margin-bottom: 0.75rem;
-        letter-spacing: 0.05em;
-    }
-    .welcome-card h3 {
-        font-family: 'Outfit', sans-serif;
-        color: #1e3a8a;
-        margin: 0 0 0.5rem 0;
-        font-size: 1.25rem;
-        font-weight: 700;
-    }
-    .welcome-card p {
-        font-family: 'Inter', sans-serif;
-        font-size: 0.9rem;
-        line-height: 1.6;
-        color: #475569;
-        margin: 0;
-    }
-    
-    /* Sidebar Brand styling */
-    .sidebar-brand {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 1.5rem;
-        padding-bottom: 0.5rem;
-        border-bottom: 1px solid #e2e8f0;
-    }
-    .sidebar-logo {
-        font-size: 1.5rem;
-    }
-    .sidebar-title {
-        font-family: 'Outfit', sans-serif;
-        font-size: 1.1rem;
-        font-weight: 700;
-        color: #1e3a8a; /* Navy */
-        letter-spacing: 0.05em;
-    }
-    
-    /* Buttons custom styling */
-    div.stButton > button {
-        border-radius: 8px !important;
-        border: 1px solid #cbd5e1 !important;
-        font-weight: 500 !important;
-        font-family: 'Inter', sans-serif !important;
-        transition: all 0.2s ease-in-out !important;
-        background-color: #ffffff !important;
-        color: #334155 !important;
-    }
-    
-    div.stButton > button:hover {
-        border-color: #1e3a8a !important;
-        color: #1e3a8a !important;
-        background-color: rgba(30, 58, 138, 0.04) !important;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-    }
-    
-    /* Sidebar Customizations */
-    [data-testid="stSidebar"] {
-        background-color: #ffffff !important;
-        border-right: 1px solid #e2e8f0 !important;
-    }
-    
-    [data-testid="stSidebar"] button {
-        text-align: left !important;
-        justify-content: flex-start !important;
-        background-color: transparent !important;
-        border: 1px solid transparent !important;
-        color: #475569 !important;
-        font-weight: 500 !important;
-        border-radius: 8px !important;
-        padding: 0.5rem 0.75rem !important;
-        transition: all 0.2s ease !important;
-    }
-    
-    [data-testid="stSidebar"] button:hover {
-        background-color: #f1f5f9 !important;
-        color: #1e3a8a !important;
-        border-color: #e2e8f0 !important;
-    }
-    
-    /* Active session indicator styling inside sidebar */
-    [class*="st-key-active-session"] button {
-        background-color: #eff6ff !important;
-        color: #1e3a8a !important;
-        border-left: 4px solid #1e3a8a !important;
-        font-weight: 600 !important;
-        border-radius: 0 8px 8px 0 !important;
-    }
-    
-    /* Sidebar delete button (primary kind) */
-    [data-testid="stSidebar"] button[kind="primary"] {
-        background-color: #fee2e2 !important;
-        color: #991b1b !important;
-        border: 1px solid #fca5a5 !important;
-    }
-    [data-testid="stSidebar"] button[kind="primary"]:hover {
-        background-color: #fca5a5 !important;
-        color: #991b1b !important;
-    }
-    
-    
-    /* File uploader custom borders */
-    [data-testid="stFileUploader"] {
-        border: 1px dashed #cbd5e1 !important;
-        border-radius: 8px !important;
-        background-color: #f8fafc !important;
-        padding: 10px !important;
-    }
-    [data-testid="stFileUploader"] section {
-        background-color: transparent !important;
-        padding: 0 !important;
-    }
-    
-    /* Chat message container custom styles */
-    div[data-testid="stChatMessage"] {
-        background-color: #ffffff !important;
-        border: 1px solid #e2e8f0 !important;
-        border-radius: 12px !important;
-        padding: 1.25rem !important;
-        margin-bottom: 1rem !important;
-        box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.03) !important;
-        transition: border-color 0.2s ease !important;
-    }
-    div[data-testid="stChatMessage"]:hover {
-        border-color: #cbd5e1 !important;
-    }
-    
-    /* Style avatars */
-    div[data-testid="stChatMessageAvatar"] {
-        background-color: #f1f5f9 !important;
-        border: 1px solid #e2e8f0 !important;
-        border-radius: 8px !important;
-    }
-    
-    /* Container styling for user messages */
-    div[class*="st-key-chat_user"] div[data-testid="stChatMessage"] {
-        background-color: #f8fafc !important;
-        border-left: 4px solid #64748b !important;
-    }
-    
-    /* Container styling for assistant messages */
-    div[class*="st-key-chat_assistant"] div[data-testid="stChatMessage"] {
-        background-color: #eff6ff !important;
-        border-left: 4px solid #1e3a8a !important;
-    }
-    
-    /* Suggestion cards styling */
-    [class*="st-key-suggestions-container"] button {
-        text-align: left !important;
-        justify-content: flex-start !important;
-        background-color: #ffffff !important;
-        border: 1px solid #e2e8f0 !important;
-        border-radius: 12px !important;
-        padding: 1rem !important;
-        height: auto !important;
-        min-height: 80px !important;
-        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.02) !important;
-        transition: all 0.2s ease-in-out !important;
-    }
-    [class*="st-key-suggestions-container"] button:hover {
-        border-color: #b45309 !important; /* Gold */
-        background-color: #fffbeb !important; /* Warm gold tint */
-        transform: translateY(-2px);
-        box-shadow: 0 4px 6px -1px rgba(180, 83, 9, 0.05) !important;
-    }
-    
-    /* Chat input box */
-    [data-testid="stChatInput"] {
-        background-color: transparent !important;
-    }
-    [data-testid="stChatInput"] textarea {
-        border-radius: 8px !important;
-        border: 1px solid #cbd5e1 !important;
-        transition: all 0.2s ease !important;
-        background-color: #ffffff !important;
-    }
-    [data-testid="stChatInput"] textarea:focus {
-        border-color: #2563eb !important;
-        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1) !important;
-    }
-    
-    /* Custom disclaimer footer */
-    .legal-footer {
-        text-align: center;
-        padding: 20px;
-        font-size: 0.8rem;
-        color: #64748b;
-        border-top: 1px solid #e2e8f0;
-        margin-top: 40px;
-        line-height: 1.5;
-        font-family: 'Inter', sans-serif;
-    }
-</style>
-""", unsafe_allow_html=True)
+css_path = os.path.join("static", "style.css")
+if os.path.exists(css_path):
+    with open(css_path, "r", encoding="utf-8") as f:
+        custom_css = "\n".join([line.lstrip() for line in f.read().splitlines() if line.strip()])
+    st.markdown(f"""<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet"><style>{custom_css}</style>""", unsafe_allow_html=True)
 
 # Initialize Database with fallback
 use_db = False
@@ -280,7 +27,7 @@ db_error_msg = None
 db = None
 
 try:
-    from database import SQLDatabase
+    from source.Database.db_connection import SQLDatabase
     db = SQLDatabase()
     # Test connection
     conn = db.get_connection()

@@ -1,0 +1,158 @@
+import os
+import sys
+
+# Ensure parent directory is in path to import config
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+import config
+from langchain_qdrant import QdrantVectorStore
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from source.Function.utils import split_by_articles
+
+class FinancialRAG:
+    def __init__(self):
+        from source.Gemini.gemini import get_llm, get_embeddings, get_qdrant_client
+        self.llm = get_llm()
+        self.embeddings = get_embeddings()
+        self.client = get_qdrant_client()
+        self.vectorstore = None
+
+    def load_existing_db(self):
+        """Loads an existing Qdrant DB if it exists."""
+        if os.path.exists(config.QDRANT_PATH):
+            try:
+                self.client.get_collection(config.COLLECTION_NAME)
+                self.vectorstore = QdrantVectorStore(
+                    client=self.client, 
+                    collection_name=config.COLLECTION_NAME, 
+                    embedding=self.embeddings
+                )
+                return True
+            except Exception:
+                pass
+        return False
+
+    def load_and_index_pdf(self, file_path, session_id=None):
+        """Loads a PDF, splits it, and stores it in Qdrant Local."""
+        loader = PyPDFLoader(file_path)
+        docs = loader.load()
+
+        splits = split_by_articles(docs)
+        is_article_split = splits is not None
+        
+        if not is_article_split:
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=config.CHUNK_SIZE,
+                chunk_overlap=config.CHUNK_OVERLAP,
+                separators=["\n\n", "\n", ".", " ", ""]
+            )
+            splits = text_splitter.split_documents(docs)
+
+        file_name = os.path.basename(file_path)
+        for doc in splits:
+            doc.metadata["source"] = file_name
+            if session_id is not None:
+                doc.metadata["session_id"] = session_id
+
+        try:
+            self.client.get_collection(config.COLLECTION_NAME)
+        except Exception:
+            from qdrant_client.models import VectorParams, Distance
+            vector_size = len(self.embeddings.embed_query("test"))
+            self.client.create_collection(
+                collection_name=config.COLLECTION_NAME,
+                vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE)
+            )
+
+        try:
+            from qdrant_client.models import Filter, FieldCondition, MatchValue
+            self.client.delete(
+                collection_name=config.COLLECTION_NAME,
+                points_selector=Filter(
+                    must=[
+                        FieldCondition(
+                            key="metadata.source",
+                            match=MatchValue(value=file_name)
+                        )
+                    ]
+                )
+            )
+        except Exception:
+            pass
+
+        self.vectorstore = QdrantVectorStore(
+            client=self.client,
+            collection_name=config.COLLECTION_NAME,
+            embedding=self.embeddings
+        )
+        self.vectorstore.add_documents(splits)
+        return len(splits)
+
+    def delete_document(self, file_name):
+        """Xóa hoàn toàn một tài liệu khỏi cơ sở dữ liệu Qdrant và thư mục data/laws."""
+        try:
+            from qdrant_client.models import Filter, FieldCondition, MatchValue
+            self.client.delete(
+                collection_name=config.COLLECTION_NAME,
+                points_selector=Filter(
+                    must=[
+                        FieldCondition(
+                            key="metadata.source",
+                            match=MatchValue(value=file_name)
+                        )
+                    ]
+                )
+            )
+            file_path = os.path.join("data", "laws", file_name)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            return True
+        except Exception:
+            return False
+
+    def get_indexed_documents(self):
+        """Lấy danh sách các tài liệu luật (tên file PDF) đã được nạp vào Qdrant."""
+        if not self.vectorstore:
+            return []
+        try:
+            sources = set()
+            next_page_offset = None
+            while True:
+                response, next_page_offset = self.client.scroll(
+                    collection_name=config.COLLECTION_NAME,
+                    limit=1000,
+                    offset=next_page_offset,
+                    with_payload=True,
+                    with_vectors=False
+                )
+                for point in response:
+                    payload = point.payload
+                    metadata = payload.get("metadata", {})
+                    source = metadata.get("source") or payload.get("source")
+                    if source:
+                        sources.add(source)
+                if next_page_offset is None:
+                    break
+            return sorted(list(sources))
+        except Exception:
+            return []
+
+    def rewrite_question(self, question, chat_history):
+        from source.Generate.generate import rewrite_question
+        return rewrite_question(self, question, chat_history)
+
+    def extract_entities_from_query(self, query):
+        from source.Generate.generate import extract_entities_from_query
+        return extract_entities_from_query(self, query)
+
+    def get_qa_chain(self):
+        from source.Generate.generate import get_qa_chain
+        return get_qa_chain(self)
+
+    def summarize_pdf(self, file_path):
+        from source.Generate.T5Sum import summarize_pdf
+        return summarize_pdf(self, file_path)
+
+    def ask(self, question, chat_history, session_id=None):
+        from source.Generate.generate import ask
+        return ask(self, question, chat_history, session_id)
