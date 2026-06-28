@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trợ lý Tư vấn Luật pháp AI ⚖️</title>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Custom stylesheet -->
+    <link rel="stylesheet" href="/static/app.css">
+    
+    <!-- Markdown Parser -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-brand">
+                    <span class="sidebar-logo">⚖️</span>
+                    <span class="sidebar-title">TRỢ LÝ LUẬT AI</span>
+                </div>
+            </div>
+
+            <!-- New Chat Button -->
+            <button id="btn-new-chat" class="btn btn-primary btn-new-chat">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                Đoạn Chat Mới
+            </button>
+
+            <!-- PDF Upload Zone -->
+            <div class="pdf-upload-container">
+                <div class="pdf-upload-header">📄 Nạp thêm Văn bản Luật (PDF)</div>
+                <div id="drop-zone" class="drop-zone">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="upload-icon"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    <div class="drop-zone-text">Kéo thả hoặc click để chọn file PDF</div>
+                    <input type="file" id="pdf-file-input" accept="application/pdf" style="display: none;">
+                </div>
+                <div id="upload-status" class="upload-status" style="display: none;">
+                    <div class="spinner-small"></div>
+                    <span id="upload-status-text">Đang tải lên...</span>
+                </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <!-- Chat Sessions List -->
+            <div class="sessions-section">
+                <div class="sessions-header">LỊCH SỬ HỘI THOẠI</div>
+                <div id="sessions-list" class="sessions-list">
+                    <!-- Loaded dynamically -->
+                </div>
+            </div>
+
+            <!-- Connection Status -->
+            <div class="status-footer">
+                {% if use_db %}
+                    <span class="badge badge-success">● Database Connected</span>
+                {% else %}
+                    <span class="badge badge-warning" title="{{ db_error_msg }}">⚠️ SQL Server Offline (In-Memory Run)</span>
+                {% endif %}
+            </div>
+        </aside>
+
+        <!-- Main Chat Area -->
+        <main class="main-content">
+            <!-- Brand Header -->
+            <header class="brand-header">
+                <div class="brand-tag">HỆ THỐNG TRỢ LÝ SỐ PHÁP LUẬT VIỆT NAM</div>
+                <h1 class="main-title">Trợ lý Tư vấn Luật pháp AI ⚖️</h1>
+                <p class="subtitle">Tra cứu cơ sở dữ liệu pháp luật chính thống, trích dẫn chính xác điều khoản và nguồn tài liệu</p>
+            </header>
+
+            <!-- Chat History Area -->
+            <div id="chat-messages" class="chat-messages">
+                <!-- Welcome Card (shown when no messages exist) -->
+                <div id="welcome-card" class="welcome-card">
+                    <div class="welcome-badge">⚖️ KHỞI ĐẦU CHAT</div>
+                    <h3>Chào mừng đến với Trợ Lý Luật Pháp Việt Nam AI</h3>
+                    <p>
+                        Hệ thống hỗ trợ tra cứu các văn bản luật có trong thư mục luật dùng chung. 
+                        Khi trả lời, AI sẽ tự động tìm kiếm cơ sở dữ liệu luật pháp và trích dẫn rõ ràng tên văn bản, điều, khoản và số trang tương ứng.
+                    </p>
+                    
+                    <div class="suggestions-section-main">
+                        <h4>💡 Gợi ý một số câu hỏi mẫu:</h4>
+                        <div class="suggestions-grid">
+                            <button class="btn-suggestion" data-prompt="Điều kiện để hộ gia đình, cá nhân được cấp sổ đỏ (Giấy chứng nhận quyền sử dụng đất) mới nhất là gì?">
+                                <span class="sugg-icon">🏞️</span>
+                                <div class="sugg-content">
+                                    <strong>Luật Đất Đai</strong>
+                                    <span>Điều kiện để hộ gia đình, cá nhân được cấp sổ đỏ mới nhất...</span>
+                                </div>
+                            </button>
+                            <button class="btn-suggestion" data-prompt="Khi nào ly hôn thì được chia tài sản chung?">
+                                <span class="sugg-icon">🏠</span>
+                                <div class="sugg-content">
+                                    <strong>Luật Hôn Nhân và Gia Đình</strong>
+                                    <span>Khi nào ly hôn thì được chia tài sản chung?</span>
+                                </div>
+                            </button>
+                            <button class="btn-suggestion" data-prompt="Tội lừa đảo chiếm đoạt tài sản bị phạt bao nhiêu năm tù?">
+                                <span class="sugg-icon">💼</span>
+                                <div class="sugg-content">
+                                    <strong>Luật Hình sự</strong>
+                                    <span>Tội lừa đảo chiếm đoạt tài sản bị phạt bao nhiêu năm?</span>
+                                </div>
+                            </button>
+                            <button class="btn-suggestion" data-prompt="Quy trình thủ tục thành lập công ty TNHH có từ 2 thành viên trở lên gồm những bước nào?">
+                                <span class="sugg-icon">🏢</span>
+                                <div class="sugg-content">
+                                    <strong>Luật Doanh Nghiệp</strong>
+                                    <span>Quy trình thủ tục thành lập công ty TNHH từ 2 thành viên...</span>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PDF Summary Card (hidden by default) -->
+                <div id="pdf-summary-card" class="pdf-summary-card" style="display: none;">
+                    <div class="summary-header" onclick="toggleSummaryBody()">
+                        <div class="summary-title-container">
+                            <span class="summary-icon">📌</span>
+                            <span class="summary-title">Bản tóm tắt nhanh văn bản pháp luật vừa nạp</span>
+                        </div>
+                        <span id="summary-toggle-arrow" class="summary-toggle-arrow">▼</span>
+                    </div>
+                    <div id="pdf-summary-body" class="summary-body">
+                        <!-- Loaded dynamically -->
+                    </div>
+                </div>
+
+                <!-- Messages Log -->
+                <div id="messages-log"></div>
+
+                <!-- Typing/Thinking Indicator -->
+                <div id="thinking-indicator" class="message-wrapper assistant" style="display: none;">
+                    <div class="chat-bubble thinking">
+                        <div class="thinking-spinner">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                        <div class="thinking-text">Đang tra cứu cơ sở dữ liệu luật và lập luận câu trả lời...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Input Area -->
+            <div class="chat-input-container">
+                <form id="chat-form" class="chat-form">
+                    <input type="text" id="chat-input" placeholder="Nhập câu hỏi pháp luật (Ví dụ: Điều kiện được cấp sổ đỏ là gì?)..." autocomplete="off" required>
+                    <button type="submit" id="btn-send" class="btn btn-primary btn-send">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                    </button>
+                </form>
+            </div>
+
+            <!-- Disclaimer Footer -->
+            <footer class="legal-footer">
+                ⚠️ <b>Khuyến cáo pháp lý:</b> Thông tin cung cấp bởi Trợ lý AI chỉ mang tính chất tham khảo dựa trên các tài liệu luật hiện có trong hệ thống và không thay thế cho các ý kiến tư vấn pháp lý chuyên môn từ Luật sư hoặc Cơ quan tư pháp có thẩm quyền.
+            </footer>
+        </main>
+    </div>
+
+    <!-- UI Logic Script -->
+    <script>
+        let currentSessionId = null;
+        const chatMessages = document.getElementById('chat-messages');
+        const messagesLog = document.getElementById('messages-log');
+        const welcomeCard = document.getElementById('welcome-card');
+        const pdfSummaryCard = document.getElementById('pdf-summary-card');
+        const pdfSummaryBody = document.getElementById('pdf-summary-body');
+        const chatInput = document.getElementById('chat-input');
+        const chatForm = document.getElementById('chat-form');
+        const thinkingIndicator = document.getElementById('thinking-indicator');
+        const sessionsList = document.getElementById('sessions-list');
+        const btnNewChat = document.getElementById('btn-new-chat');
+
+        // Drag & Drop / Upload
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('pdf-file-input');
+        const uploadStatus = document.getElementById('upload-status');
+        const uploadStatusText = document.getElementById('upload-status-text');
+
+        // Initialize marked options
+        marked.setOptions({
+            breaks: true,
+            gfm: true
+        });
+
+        // Load sessions list on startup
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSessions();
+            setupDropZone();
+            setupSuggestionButtons();
+        });
+
+        // New Chat Button Click
+        btnNewChat.addEventListener('click', () => {
+            startNewChat();
+        });
+
+        // Form Submit
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const query = chatInput.value.trim();
+            if (!query) return;
+
+            chatInput.value = '';
+            await sendQuery(query);
+        });
+
+        // Toggle PDF Summary Card Body
+        function toggleSummaryBody() {
+            const body = document.getElementById('pdf-summary-body');
+            const arrow = document.getElementById('summary-toggle-arrow');
+            if (body.style.display === 'none') {
+                body.style.display = 'block';
+                arrow.textContent = '▲';
+            } else {
+                body.style.display = 'none';
+                arrow.textContent = '▼';
+            }
+        }
+
+        // Setup drop zone events
+        function setupDropZone() {
+            dropZone.addEventListener('click', () => fileInput.click());
+            
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('dragover');
+            });
+
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.classList.remove('dragover');
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+                if (e.dataTransfer.files.length > 0) {
+                    handleFileUpload(e.dataTransfer.files[0]);
+                }
+            });
+
+            fileInput.addEventListener('change', () => {
+                if (fileInput.files.length > 0) {
+                    handleFileUpload(fileInput.files[0]);
+                }
+            });
+        }
+
+        // Handle File Upload
+        async function handleFileUpload(file) {
+            if (file.type !== 'application/pdf') {
+                alert('Vui lòng chọn file PDF.');
+                return;
+            }
+
+            uploadStatus.style.display = 'flex';
+            uploadStatusText.textContent = 'Đang tải lên và lập chỉ mục PDF...';
+            dropZone.style.opacity = '0.5';
+            dropZone.style.pointerEvents = 'none';
+
+            const formData = new FormData();
+            formData.append('file', file);
+            if (currentSessionId) {
+                formData.append('session_id', currentSessionId);
+            }
+
+            try {
+                const response = await fetch('/upload-pdf', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    uploadStatusText.textContent = 'Nạp luật thành công!';
+                    setTimeout(() => {
+                        uploadStatus.style.display = 'none';
+                        dropZone.style.opacity = '1';
+                        dropZone.style.pointerEvents = 'all';
+                    }, 2000);
+
+                    // Set session id
+                    currentSessionId = data.session_id;
+
+                    // Display PDF summary
+                    pdfSummaryBody.innerHTML = marked.parse(data.summary);
+                    pdfSummaryCard.style.display = 'block';
+                    pdfSummaryBody.style.display = 'block';
+                    document.getElementById('summary-toggle-arrow').textContent = '▲';
+
+                    // Reload sessions list
+                    await loadSessions();
+                    
+                    // Highlight active session
+                    highlightActiveSession(currentSessionId);
+                    
+                    // Clear messages list if it was a new session
+                    welcomeCard.style.display = 'none';
+                } else {
+                    throw new Error(data.detail || 'Lỗi không xác định.');
+                }
+            } catch (error) {
+                console.error(error);
+                alert(`Lỗi khi nạp PDF: ${error.message}`);
+                uploadStatus.style.display = 'none';
+                dropZone.style.opacity = '1';
+                dropZone.style.pointerEvents = 'all';
+            }
+        }
+
+        // Suggestion button setups
+        function setupSuggestionButtons() {
+            document.querySelectorAll('.btn-suggestion').forEach(button => {
+                button.addEventListener('click', async () => {
+                    const promptText = button.getAttribute('data-prompt');
+                    await sendQuery(promptText);
+                });
+            });
+        }
+
+        // Load Chat Sessions History
+        async function loadSessions() {
+            try {
+                const response = await fetch('/get-sessions');
+                const data = await response.json();
+                
+                sessionsList.innerHTML = '';
+                if (data.sessions && data.sessions.length > 0) {
+                    data.sessions.forEach(sess => {
+                        const sessionItem = document.createElement('div');
+                        sessionItem.className = 'session-item';
+                        sessionItem.id = `sess-${sess.id}`;
+                        
+                        // Active check
+                        if (sess.id === currentSessionId) {
+                            sessionItem.classList.add('active');
+                        }
+
+                        sessionItem.innerHTML = `
+                            <div class="session-info" onclick="selectSession(${sess.id})">
+                                <span class="session-icon">💬</span>
+                                <span class="session-title-text" title="${sess.title}">${sess.title}</span>
+                            </div>
+                            <button class="btn-delete-session" onclick="deleteSession(event, ${sess.id})" title="Xoá cuộc hội thoại">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                            </button>
+                        `;
+                        sessionsList.appendChild(sessionItem);
+                    });
+                } else {
+                    sessionsList.innerHTML = '<div class="no-sessions">Chưa có cuộc hội thoại nào.</div>';
+                }
+            } catch (err) {
+                console.error('Error loading sessions:', err);
+            }
+        }
+
+        // Selection session handler
+        async function selectSession(sessionId) {
+            currentSessionId = sessionId;
+            highlightActiveSession(sessionId);
+            welcomeCard.style.display = 'none';
+            messagesLog.innerHTML = '';
+            pdfSummaryCard.style.display = 'none';
+
+            try {
+                const response = await fetch(`/get-chat-history/${sessionId}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Populate messages
+                    if (data.chat_history && data.chat_history.length > 0) {
+                        data.chat_history.forEach(msg => {
+                            appendMessage(msg.sender, msg.message);
+                        });
+                    }
+
+                    // Populate summary if exists
+                    if (data.pdf_summary) {
+                        pdfSummaryBody.innerHTML = marked.parse(data.pdf_summary);
+                        pdfSummaryCard.style.display = 'block';
+                        pdfSummaryBody.style.display = 'none'; // collapsed by default
+                        document.getElementById('summary-toggle-arrow').textContent = '▼';
+                    }
+                    
+                    scrollToBottom();
+                } else {
+                    alert('Không thể tải lịch sử chat.');
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Có lỗi xảy ra khi tải lịch sử.');
+            }
+        }
+
+        // Delete session handler
+        async function deleteSession(event, sessionId) {
+            event.stopPropagation();
+            if (!confirm('Bạn có chắc chắn muốn xoá cuộc hội thoại này?')) return;
+
+            try {
+                const response = await fetch(`/delete-session/${sessionId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    if (currentSessionId === sessionId) {
+                        startNewChat();
+                    }
+                    await loadSessions();
+                } else {
+                    alert('Không thể xoá cuộc hội thoại.');
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        // Highlight active session
+        function highlightActiveSession(sessionId) {
+            document.querySelectorAll('.session-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            const activeItem = document.getElementById(`sess-${sessionId}`);
+            if (activeItem) {
+                activeItem.classList.add('active');
+            }
+        }
+
+        // Start new chat session clean state
+        function startNewChat() {
+            currentSessionId = null;
+            welcomeCard.style.display = 'block';
+            pdfSummaryCard.style.display = 'none';
+            messagesLog.innerHTML = '';
+            document.querySelectorAll('.session-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            chatInput.focus();
+        }
+
+        // Append chat messages helper
+        function appendMessage(sender, text, sources = []) {
+            const messageWrapper = document.createElement('div');
+            messageWrapper.className = `message-wrapper ${sender}`;
+
+            const bubble = document.createElement('div');
+            bubble.className = 'chat-bubble';
+            
+            // Format content with Marked if assistant
+            if (sender === 'assistant') {
+                bubble.innerHTML = marked.parse(text);
+                
+                // Add sources if available
+                if (sources && sources.length > 0) {
+                    const sourcesContainer = document.createElement('div');
+                    sourcesContainer.className = 'sources-container';
+                    
+                    const sourcesTitle = document.createElement('div');
+                    sourcesTitle.className = 'sources-title';
+                    sourcesTitle.innerHTML = '🔍 Nguồn dẫn chiếu:';
+                    sourcesContainer.appendChild(sourcesTitle);
+
+                    const sourcesList = document.createElement('ul');
+                    sourcesList.className = 'sources-list';
+                    sources.forEach(src => {
+                        const li = document.createElement('li');
+                        li.textContent = src;
+                        sourcesList.appendChild(li);
+                    });
+                    sourcesContainer.appendChild(sourcesList);
+                    bubble.appendChild(sourcesContainer);
+                }
+            } else {
+                bubble.textContent = text;
+            }
+
+            messageWrapper.appendChild(bubble);
+            messagesLog.appendChild(messageWrapper);
+            scrollToBottom();
+        }
+
+        // Scroll to bottom of chat area
+        function scrollToBottom() {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Send Query to Backend
+        async function sendQuery(query) {
+            welcomeCard.style.display = 'none';
+            appendMessage('user', query);
+            
+            // Show thinking indicator
+            thinkingIndicator.style.display = 'block';
+            scrollToBottom();
+
+            try {
+                const response = await fetch('/ask', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        query: query,
+                        session_id: currentSessionId
+                    })
+                });
+
+                const data = await response.json();
+                thinkingIndicator.style.display = 'none';
+
+                if (response.ok) {
+                    // Update active session
+                    const isNewSession = (currentSessionId === null);
+                    currentSessionId = data.session_id;
+
+                    appendMessage('assistant', data.answer, data.sources);
+                    
+                    if (isNewSession) {
+                        await loadSessions();
+                    } else {
+                        // Refresh sessions to update titles/first message titles if necessary
+                        await loadSessions();
+                    }
+                    highlightActiveSession(currentSessionId);
+                } else {
+                    throw new Error(data.detail || 'Có lỗi xảy ra.');
+                }
+            } catch (error) {
+                thinkingIndicator.style.display = 'none';
+                console.error(error);
+                appendMessage('assistant', `⚠️ **Lỗi:** ${error.message}`);
+            }
+        }
+    </script>
+</body>
+</html>
