@@ -1,19 +1,23 @@
 <!DOCTYPE html>
 <html lang="vi">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trợ lý Tư vấn Luật pháp AI ⚖️</title>
-    
+
     <!-- Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+
     <!-- Custom stylesheet -->
     <link rel="stylesheet" href="/static/app.css">
-    
+
     <!-- Markdown Parser -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
+
 <body>
     <div class="app-container">
         <!-- Sidebar -->
@@ -27,7 +31,11 @@
 
             <!-- New Chat Button -->
             <button id="btn-new-chat" class="btn btn-primary btn-new-chat">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
                 Đoạn Chat Mới
             </button>
 
@@ -35,7 +43,12 @@
             <div class="pdf-upload-container">
                 <div class="pdf-upload-header">📄 Nạp thêm Văn bản Luật (PDF)</div>
                 <div id="drop-zone" class="drop-zone">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="upload-icon"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round" class="upload-icon">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
                     <div class="drop-zone-text">Kéo thả hoặc click để chọn file PDF</div>
                     <input type="file" id="pdf-file-input" accept="application/pdf" style="display: none;">
                 </div>
@@ -55,14 +68,6 @@
                 </div>
             </div>
 
-            <!-- Connection Status -->
-            <div class="status-footer">
-                {% if use_db %}
-                    <span class="badge badge-success">● Database Connected</span>
-                {% else %}
-                    <span class="badge badge-warning" title="{{ db_error_msg }}">⚠️ SQL Server Offline (In-Memory Run)</span>
-                {% endif %}
-            </div>
         </aside>
 
         <!-- Main Chat Area -->
@@ -71,24 +76,27 @@
             <header class="brand-header">
                 <div class="brand-tag">HỆ THỐNG TRỢ LÝ SỐ PHÁP LUẬT VIỆT NAM</div>
                 <h1 class="main-title">Trợ lý Tư vấn Luật pháp AI ⚖️</h1>
-                <p class="subtitle">Tra cứu cơ sở dữ liệu pháp luật chính thống, trích dẫn chính xác điều khoản và nguồn tài liệu</p>
+                <p class="subtitle">Tra cứu cơ sở dữ liệu pháp luật chính thống, trích dẫn chính xác điều khoản và nguồn
+                    tài liệu</p>
             </header>
 
             <!-- Chat History Area -->
             <div id="chat-messages" class="chat-messages">
                 <!-- Welcome Card (shown when no messages exist) -->
                 <div id="welcome-card" class="welcome-card">
-                    <div class="welcome-badge">⚖️ KHỞI ĐẦU CHAT</div>
+
                     <h3>Chào mừng đến với Trợ Lý Luật Pháp Việt Nam AI</h3>
                     <p>
-                        Hệ thống hỗ trợ tra cứu các văn bản luật có trong thư mục luật dùng chung. 
-                        Khi trả lời, AI sẽ tự động tìm kiếm cơ sở dữ liệu luật pháp và trích dẫn rõ ràng tên văn bản, điều, khoản và số trang tương ứng.
+                        Hệ thống hỗ trợ tra cứu các văn bản luật có trong thư mục luật dùng chung.
+                        Khi trả lời, AI sẽ tự động tìm kiếm cơ sở dữ liệu luật pháp và trích dẫn rõ ràng tên văn bản,
+                        điều, khoản và số trang tương ứng.
                     </p>
-                    
+
                     <div class="suggestions-section-main">
                         <h4>💡 Gợi ý một số câu hỏi mẫu:</h4>
                         <div class="suggestions-grid">
-                            <button class="btn-suggestion" data-prompt="Điều kiện để hộ gia đình, cá nhân được cấp sổ đỏ (Giấy chứng nhận quyền sử dụng đất) mới nhất là gì?">
+                            <button class="btn-suggestion"
+                                data-prompt="Điều kiện để hộ gia đình, cá nhân được cấp sổ đỏ (Giấy chứng nhận quyền sử dụng đất) mới nhất là gì?">
                                 <span class="sugg-icon">🏞️</span>
                                 <div class="sugg-content">
                                     <strong>Luật Đất Đai</strong>
@@ -102,14 +110,16 @@
                                     <span>Khi nào ly hôn thì được chia tài sản chung?</span>
                                 </div>
                             </button>
-                            <button class="btn-suggestion" data-prompt="Tội lừa đảo chiếm đoạt tài sản bị phạt bao nhiêu năm tù?">
+                            <button class="btn-suggestion"
+                                data-prompt="Tội lừa đảo chiếm đoạt tài sản bị phạt bao nhiêu năm tù?">
                                 <span class="sugg-icon">💼</span>
                                 <div class="sugg-content">
                                     <strong>Luật Hình sự</strong>
                                     <span>Tội lừa đảo chiếm đoạt tài sản bị phạt bao nhiêu năm?</span>
                                 </div>
                             </button>
-                            <button class="btn-suggestion" data-prompt="Quy trình thủ tục thành lập công ty TNHH có từ 2 thành viên trở lên gồm những bước nào?">
+                            <button class="btn-suggestion"
+                                data-prompt="Quy trình thủ tục thành lập công ty TNHH có từ 2 thành viên trở lên gồm những bước nào?">
                                 <span class="sugg-icon">🏢</span>
                                 <div class="sugg-content">
                                     <strong>Luật Doanh Nghiệp</strong>
@@ -153,16 +163,24 @@
             <!-- Chat Input Area -->
             <div class="chat-input-container">
                 <form id="chat-form" class="chat-form">
-                    <input type="text" id="chat-input" placeholder="Nhập câu hỏi pháp luật (Ví dụ: Điều kiện được cấp sổ đỏ là gì?)..." autocomplete="off" required>
+                    <input type="text" id="chat-input"
+                        placeholder="Nhập câu hỏi pháp luật (Ví dụ: Điều kiện được cấp sổ đỏ là gì?)..."
+                        autocomplete="off" required>
                     <button type="submit" id="btn-send" class="btn btn-primary btn-send">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
                     </button>
                 </form>
             </div>
 
             <!-- Disclaimer Footer -->
             <footer class="legal-footer">
-                ⚠️ <b>Khuyến cáo pháp lý:</b> Thông tin cung cấp bởi Trợ lý AI chỉ mang tính chất tham khảo dựa trên các tài liệu luật hiện có trong hệ thống và không thay thế cho các ý kiến tư vấn pháp lý chuyên môn từ Luật sư hoặc Cơ quan tư pháp có thẩm quyền.
+                ⚠️ <b>Khuyến cáo pháp lý:</b> Thông tin cung cấp bởi Trợ lý AI chỉ mang tính chất tham khảo dựa trên các
+                tài liệu luật hiện có trong hệ thống và không thay thế cho các ý kiến tư vấn pháp lý chuyên môn từ Luật
+                sư hoặc Cơ quan tư pháp có thẩm quyền.
             </footer>
         </main>
     </div>
@@ -231,7 +249,7 @@
         // Setup drop zone events
         function setupDropZone() {
             dropZone.addEventListener('click', () => fileInput.click());
-            
+
             dropZone.addEventListener('dragover', (e) => {
                 e.preventDefault();
                 dropZone.classList.add('dragover');
@@ -281,7 +299,7 @@
                 });
 
                 const data = await response.json();
-                
+
                 if (response.ok) {
                     uploadStatusText.textContent = 'Nạp luật thành công!';
                     setTimeout(() => {
@@ -301,10 +319,10 @@
 
                     // Reload sessions list
                     await loadSessions();
-                    
+
                     // Highlight active session
                     highlightActiveSession(currentSessionId);
-                    
+
                     // Clear messages list if it was a new session
                     welcomeCard.style.display = 'none';
                 } else {
@@ -334,14 +352,14 @@
             try {
                 const response = await fetch('/get-sessions');
                 const data = await response.json();
-                
+
                 sessionsList.innerHTML = '';
                 if (data.sessions && data.sessions.length > 0) {
                     data.sessions.forEach(sess => {
                         const sessionItem = document.createElement('div');
                         sessionItem.className = 'session-item';
                         sessionItem.id = `sess-${sess.id}`;
-                        
+
                         // Active check
                         if (sess.id === currentSessionId) {
                             sessionItem.classList.add('active');
@@ -377,7 +395,7 @@
             try {
                 const response = await fetch(`/get-chat-history/${sessionId}`);
                 const data = await response.json();
-                
+
                 if (response.ok) {
                     // Populate messages
                     if (data.chat_history && data.chat_history.length > 0) {
@@ -393,7 +411,7 @@
                         pdfSummaryBody.style.display = 'none'; // collapsed by default
                         document.getElementById('summary-toggle-arrow').textContent = '▼';
                     }
-                    
+
                     scrollToBottom();
                 } else {
                     alert('Không thể tải lịch sử chat.');
@@ -457,16 +475,16 @@
 
             const bubble = document.createElement('div');
             bubble.className = 'chat-bubble';
-            
+
             // Format content with Marked if assistant
             if (sender === 'assistant') {
                 bubble.innerHTML = marked.parse(text);
-                
+
                 // Add sources if available
                 if (sources && sources.length > 0) {
                     const sourcesContainer = document.createElement('div');
                     sourcesContainer.className = 'sources-container';
-                    
+
                     const sourcesTitle = document.createElement('div');
                     sourcesTitle.className = 'sources-title';
                     sourcesTitle.innerHTML = '🔍 Nguồn dẫn chiếu:';
@@ -500,7 +518,7 @@
         async function sendQuery(query) {
             welcomeCard.style.display = 'none';
             appendMessage('user', query);
-            
+
             // Show thinking indicator
             thinkingIndicator.style.display = 'block';
             scrollToBottom();
@@ -526,7 +544,7 @@
                     currentSessionId = data.session_id;
 
                     appendMessage('assistant', data.answer, data.sources);
-                    
+
                     if (isNewSession) {
                         await loadSessions();
                     } else {
@@ -545,4 +563,5 @@
         }
     </script>
 </body>
+
 </html>
