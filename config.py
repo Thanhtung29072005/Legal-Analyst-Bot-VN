@@ -31,6 +31,8 @@ LLM_MAX_TOKENS = 2048
 # Retrieval Settings
 # Tăng số lượng chunk trả về để có nhiều ngữ cảnh luật hơn
 RETRIEVER_K = 10
+RERANK_TOP_N = 7
+RERANK_MODEL = "rerank-multilingual-v3.0"
 
 # SQL Server configurations 
 SQL_SERVER = os.getenv("SQL_SERVER", "localhost")

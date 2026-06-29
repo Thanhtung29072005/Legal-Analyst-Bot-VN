@@ -82,6 +82,52 @@ def get_qa_chain(rag_engine):
     from langchain_classic.chains.combine_documents import create_stuff_documents_chain
     return create_stuff_documents_chain(rag_engine.llm, qa_prompt)
 
+def cohere_rerank(query: str, documents: list, cohere_api_key: str, top_n: int = 7):
+    """Tái xếp hạng danh sách tài liệu sử dụng Cohere Rerank API qua urllib."""
+    if not cohere_api_key or not documents:
+        return documents[:top_n]
+        
+    import urllib.request
+    import urllib.error
+    import json
+    
+    url = "https://api.cohere.com/v1/rerank"
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "Authorization": f"bearer {cohere_api_key}"
+    }
+    
+    doc_texts = [doc.page_content for doc in documents]
+    
+    payload = {
+        "model": getattr(config, "RERANK_MODEL", "rerank-multilingual-v3.0"),
+        "query": query,
+        "documents": doc_texts,
+        "top_n": top_n
+    }
+    
+    try:
+        req = urllib.request.Request(
+            url, 
+            data=json.dumps(payload).encode("utf-8"), 
+            headers=headers, 
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=10) as response:
+            res_data = json.loads(response.read().decode("utf-8"))
+            
+        reranked_results = []
+        for result in res_data.get("results", []):
+            idx = result["index"]
+            if idx < len(documents):
+                documents[idx].metadata["rerank_score"] = result["relevance_score"]
+                reranked_results.append(documents[idx])
+        return reranked_results
+    except Exception as e:
+        print(f"[!] Lỗi khi gọi Cohere Rerank API: {e}. Fallback sử dụng thứ tự từ vectorstore.")
+        return documents[:top_n]
+
 def ask(rag_engine, question, chat_history, session_id=None):
     """Asks a question with history and returns the answer and sources."""
     # 1. Viết lại câu hỏi độc lập
@@ -131,15 +177,16 @@ def ask(rag_engine, question, chat_history, session_id=None):
         
     qdrant_filter = Filter(must=must_conditions) if must_conditions else None
     
-    # 5. Truy vấn tương đồng trong Vectorstore
+    # 5. Truy vấn tương đồng trong Vectorstore (lấy 25 ứng viên để rerank)
     if not rag_engine.vectorstore:
         raise ValueError("Vectorstore not initialized.")
         
     results = []
+    initial_k = 25
     try:
         results = rag_engine.vectorstore.similarity_search(
             query=rewritten_question,
-            k=config.RETRIEVER_K,
+            k=initial_k,
             filter=qdrant_filter
         )
     except Exception:
@@ -157,16 +204,24 @@ def ask(rag_engine, question, chat_history, session_id=None):
                 ])
                 results = rag_engine.vectorstore.similarity_search(
                     query=rewritten_question,
-                    k=config.RETRIEVER_K,
+                    k=initial_k,
                     filter=relaxed_filter
                 )
             if not results:
                 results = rag_engine.vectorstore.similarity_search(
                     query=rewritten_question,
-                    k=config.RETRIEVER_K
+                    k=initial_k
                 )
         except Exception:
             pass
+            
+    # 6.5 Áp dụng Cohere Reranking để chọn ra top_n tài liệu liên quan nhất
+    results = cohere_rerank(
+        query=rewritten_question,
+        documents=results,
+        cohere_api_key=config.COHERE_API_KEY,
+        top_n=config.RERANK_TOP_N
+    )
             
     # 7. Trả lời câu hỏi bằng chain
     qa_chain = get_qa_chain(rag_engine)
