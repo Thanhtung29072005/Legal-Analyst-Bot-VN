@@ -97,18 +97,19 @@ async def delete_session(session_id: int):
 @app.post("/upload-pdf")
 async def upload_pdf(file: UploadFile = File(...), session_id: Optional[int] = Form(None)):
     """Upload a PDF, save it, run indexing, and generate a summary."""
-    if not file.filename.endswith(".pdf"):
+    filename = file.filename
+    if not filename or not filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
         
     laws_dir = os.path.join("data", "laws")
     os.makedirs(laws_dir, exist_ok=True)
-    save_path = os.path.join(laws_dir, file.filename)
+    save_path = os.path.join(laws_dir, filename)
     
     with open(save_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
         
     if session_id is None:
-        session_id = db.create_session(file.filename, "")
+        session_id = db.create_session(filename, "")
         
     num_chunks = get_rag_engine().load_and_index_pdf(save_path, session_id)
     if num_chunks == 0:
@@ -117,7 +118,7 @@ async def upload_pdf(file: UploadFile = File(...), session_id: Optional[int] = F
         raise HTTPException(status_code=400, detail="File PDF scan không chứa văn bản số.")
         
     summary = get_rag_engine().summarize_pdf(save_path)
-    db.update_session_pdf(session_id, file.filename, summary)
+    db.update_session_pdf(session_id, filename, summary)
     
     return {"status": "success", "session_id": session_id, "summary": summary}
 

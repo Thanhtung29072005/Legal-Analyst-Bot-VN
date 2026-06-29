@@ -1,3 +1,4 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
 streamlit
 python-dotenv
 
@@ -7,6 +8,9 @@ langchain-community
 langchain-text-splitters
 langchain-groq
 langchain-huggingface
+langchain-qdrant
+langchain-cohere
+langchain-classic
 
 groq
 sentence-transformers
@@ -14,6 +18,7 @@ qdrant-client
 pdfplumber
 pypdf
 PyPDF2
+pyodbc
 
 unstructured
 python-magic-bin

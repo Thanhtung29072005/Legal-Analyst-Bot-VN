@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    image: legal-chatbot:latest
+    container_name: legal_chatbot_app
+    ports:
+      - "5000:5000"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - COHERE_API_KEY=${COHERE_API_KEY}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER}
+      - LLM_MODEL=${LLM_MODEL}
+      - SQL_SERVER=${SQL_SERVER}
+      - SQL_DATABASE=${SQL_DATABASE}
+      - SQL_TRUSTED_CONNECTION=${SQL_TRUSTED_CONNECTION}
+      - SQL_USERNAME=${SQL_USERNAME}
+      - SQL_PASSWORD=${SQL_PASSWORD}
+    volumes:
+      - ./data:/app/data
+      - ./qdrant_db:/app/qdrant_db
+    extra_hosts:
+      # Maps host.docker.internal to host's network interface for easier local DB access
+      - "host.docker.internal:host-gateway"
+    restart: always

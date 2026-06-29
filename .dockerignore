@@ -1,0 +1,29 @@
+# Python build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Databases & data (mounted as volumes instead)
+qdrant_db/
+data/laws/
+test_db/
+
+# IDE & system files
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Agent artifacts
+.agents/
