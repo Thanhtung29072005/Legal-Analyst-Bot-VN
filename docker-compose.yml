@@ -20,6 +20,8 @@ services:
     volumes:
       - ./data:/app/data
       - ./qdrant_db:/app/qdrant_db
+      - ./static:/app/static
+      - ./templates:/app/templates
     extra_hosts:
       # Maps host.docker.internal to host's network interface for easier local DB access
       - "host.docker.internal:host-gateway"
