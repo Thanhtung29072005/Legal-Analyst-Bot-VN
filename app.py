@@ -74,12 +74,7 @@ async def get_sessions():
 @app.get("/get-chat-history/{session_id}")
 async def get_chat_history(session_id: int):
     """Retrieve chat history for a session."""
-    history = []
-    for msg in db.get_chat_history(session_id):
-        history.append({
-            "sender": "user" if msg.__class__.__name__ == "HumanMessage" else "assistant",
-            "message": msg.content
-        })
+    history = db.get_chat_history_with_sources(session_id)
     summary_info = db.get_session_summary(session_id)
     return {
         "chat_history": history, 
@@ -146,7 +141,7 @@ async def ask_chatbot(request: QueryRequest):
         session_id = db.create_session()
         
     db.save_message(session_id, "user", query)
-    db.save_message(session_id, "assistant", answer)
+    db.save_message(session_id, "assistant", answer, sources=sources)
     
     return {"answer": answer, "sources": sources, "session_id": session_id}
 

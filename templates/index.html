@@ -400,7 +400,7 @@
                     // Populate messages
                     if (data.chat_history && data.chat_history.length > 0) {
                         data.chat_history.forEach(msg => {
-                            appendMessage(msg.sender, msg.message);
+                            appendMessage(msg.sender, msg.message, msg.sources);
                         });
                     }
 

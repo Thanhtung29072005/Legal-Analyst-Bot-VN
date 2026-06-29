@@ -41,8 +41,16 @@ class SQLDatabase:
                     session_id INT FOREIGN KEY REFERENCES Chat_Sessions(id) ON DELETE CASCADE,
                     sender VARCHAR(20) NOT NULL,
                     message NVARCHAR(MAX) NULL,
+                    sources NVARCHAR(MAX) NULL,
                     created_at DATETIME DEFAULT GETDATE()
                 )
+            END
+            ELSE
+            BEGIN
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Chat_Messages') AND name = 'sources')
+                BEGIN
+                    ALTER TABLE Chat_Messages ADD sources NVARCHAR(MAX) NULL
+                END
             END
             """)
             conn.commit()
@@ -99,14 +107,18 @@ class SQLDatabase:
         finally:
             conn.close()
 
-    def save_message(self, session_id, sender, message):
+    def save_message(self, session_id, sender, message, sources=None):
         """Lưu tin nhắn vào cơ sở dữ liệu."""
         conn = self.get_connection()
         cursor = conn.cursor()
+        
+        import json
+        sources_str = json.dumps(sources) if sources is not None else None
+        
         try:
             cursor.execute(
-                "INSERT INTO Chat_Messages (session_id, sender, message) VALUES (?, ?, ?)",
-                (session_id, sender, message)
+                "INSERT INTO Chat_Messages (session_id, sender, message, sources) VALUES (?, ?, ?, ?)",
+                (session_id, sender, message, sources_str)
             )
             conn.commit()
         finally:
@@ -171,6 +183,35 @@ class SQLDatabase:
                 else:
                     messages.append(AIMessage(content=message))
             return messages
+        finally:
+            conn.close()
+
+    def get_chat_history_with_sources(self, session_id):
+        """Tải toàn bộ lịch sử tin nhắn của một phiên chat bao gồm cả nguồn dẫn."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        import json
+        try:
+            cursor.execute(
+                "SELECT sender, message, sources FROM Chat_Messages WHERE session_id = ? ORDER BY id ASC",
+                (session_id,)
+            )
+            rows = cursor.fetchall()
+            history = []
+            for row in rows:
+                sender, message, sources_str = row[0], row[1], row[2]
+                sources = []
+                if sources_str:
+                    try:
+                       sources = json.loads(sources_str)
+                    except Exception:
+                       pass
+                history.append({
+                    "sender": "user" if sender == "user" else "assistant",
+                    "message": message,
+                    "sources": sources
+                })
+            return history
         finally:
             conn.close()
 

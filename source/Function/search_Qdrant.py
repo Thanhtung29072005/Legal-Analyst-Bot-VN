@@ -11,7 +11,7 @@ from source.Function.utils import split_by_articles
 
 class FinancialRAG:
     def __init__(self):
-        from source.Gemini.gemini import get_llm, get_embeddings, get_qdrant_client
+        from source.LLM.groq import get_llm, get_embeddings, get_qdrant_client
         self.llm = get_llm()
         self.embeddings = get_embeddings()
         self.client = get_qdrant_client()
