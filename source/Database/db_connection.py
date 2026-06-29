@@ -88,6 +88,7 @@ class SQLDatabase:
                 "INSERT INTO Chat_Sessions (pdf_name, pdf_summary) OUTPUT INSERTED.id VALUES (?, ?)",
                 (pdf_name, pdf_summary)
             )
+            # pyrefly: ignore [unsupported-operation]
             session_id = cursor.fetchone()[0]
             conn.commit()
             return session_id

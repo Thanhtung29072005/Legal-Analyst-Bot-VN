@@ -127,7 +127,9 @@ class FinancialRAG:
                 )
                 for point in response:
                     payload = point.payload
+                    # pyrefly: ignore [missing-attribute]
                     metadata = payload.get("metadata", {})
+                    # pyrefly: ignore [missing-attribute]
                     source = metadata.get("source") or payload.get("source")
                     if source:
                         sources.add(source)
