@@ -19,6 +19,7 @@ def get_embeddings():
     """Khởi tạo và trả về embeddings model dựa theo cấu hình (Cohere hoặc HuggingFace)."""
     if config.EMBEDDING_PROVIDER == "cohere":
         from langchain_cohere import CohereEmbeddings
+        # pyrefly: ignore [missing-argument]
         return CohereEmbeddings(
             cohere_api_key=config.COHERE_API_KEY,
             model=config.COHERE_EMBEDDING_MODEL,
