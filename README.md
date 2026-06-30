@@ -6,7 +6,8 @@ The **Legal Advisory Chatbot System** is designed to assist users by answering q
 
 ## Demo
 
-<img width="1918" height="968" alt="image" src="https://github.com/user-attachments/assets/629ed5a8-81f8-4a1f-871b-2196760b06b2" />
+<img width="1918" height="971" alt="image" src="https://github.com/user-attachments/assets/6d23e5c7-1973-4b9a-8a33-907dfa9986de" />
+
 
 
 ## Models & Technologies
