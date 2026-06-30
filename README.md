@@ -4,11 +4,10 @@
 
 The **Legal Advisory Chatbot System** is designed to assist users by answering questions related to Vietnamese law. By leveraging advanced Retrieval-Augmented Generation (RAG) techniques, this system can analyze and retrieve relevant legal documents from an extensive collection of official Vietnamese legal texts. The core functionality of the chatbot includes providing users with accurate and up-to-date legal information, helping them understand complex legal terminology, and offering clear, actionable advice based on Vietnamese legal documents. This system is highly valuable for individuals, businesses, and legal professionals seeking quick access to legal knowledge.
 
-![Law_ChatBot](https://github.com/user-attachments/assets/2a10c03a-3d00-4894-a2ce-f5591a7cd27f)
-
 ## Demo
 
-![image](https://github.com/user-attachments/assets/443b303d-f11b-44ef-9299-63f5f13a5936)
+<img width="1918" height="968" alt="image" src="https://github.com/user-attachments/assets/629ed5a8-81f8-4a1f-871b-2196760b06b2" />
+
 
 ## Models & Technologies
 
