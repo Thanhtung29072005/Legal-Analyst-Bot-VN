@@ -7,7 +7,7 @@ import config
 from langchain_qdrant import QdrantVectorStore
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from source.Function.utils import split_by_articles
+from source.Function.utils import split_by_articles, extract_law_name_from_filename
 
 class FinancialRAG:
     def __init__(self):
@@ -37,9 +37,13 @@ class FinancialRAG:
         loader = PyPDFLoader(file_path)
         docs = loader.load()
 
-        splits = split_by_articles(docs)
+        file_name = os.path.basename(file_path)
+        # Trích xuất tên luật từ tên file để bổ sung metadata
+        law_name = extract_law_name_from_filename(file_name)
+
+        splits = split_by_articles(docs, law_name=law_name)
         is_article_split = splits is not None
-        
+
         if not is_article_split:
             text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=config.CHUNK_SIZE,
@@ -48,9 +52,13 @@ class FinancialRAG:
             )
             splits = text_splitter.split_documents(docs)
 
-        file_name = os.path.basename(file_path)
         for doc in splits:
             doc.metadata["source"] = file_name
+            # Đảm bảo law_name luôn có trong metadata (kể cả fallback splitter)
+            if "law_name" not in doc.metadata or not doc.metadata["law_name"]:
+                doc.metadata["law_name"] = law_name
+            if "title" not in doc.metadata or not doc.metadata["title"]:
+                doc.metadata["title"] = law_name
             if session_id is not None:
                 doc.metadata["session_id"] = session_id
 
